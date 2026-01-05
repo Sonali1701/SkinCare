@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Skincare Routine Checkup</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Authentication Section -->
+    <div id="auth-container" class="auth-container">
+        <div class="auth-box">
+            <h1>Skincare Routine Checkup</h1>
+            <div id="auth-tabs" class="auth-tabs">
+                <button class="tab-btn active" data-tab="login">Login</button>
+                <button class="tab-btn" data-tab="signup">Sign Up</button>
+            </div>
+            
+            <!-- Login Form -->
+            <div id="login-form" class="auth-form active">
+                <h2>Login</h2>
+                <form id="loginForm">
+                    <div class="form-group">
+                        <label for="login-email">Email</label>
+                        <input type="email" id="login-email" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="login-password">Password</label>
+                        <input type="password" id="login-password" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Login</button>
+                </form>
+                <p id="login-error" class="error-message"></p>
+            </div>
+            
+            <!-- Signup Form -->
+            <div id="signup-form" class="auth-form">
+                <h2>Sign Up</h2>
+                <form id="signupForm">
+                    <div class="form-group">
+                        <label for="signup-email">Email</label>
+                        <input type="email" id="signup-email" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="signup-password">Password</label>
+                        <input type="password" id="signup-password" required minlength="6">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Sign Up</button>
+                </form>
+                <p id="signup-error" class="error-message"></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Application -->
+    <div id="app-container" class="app-container hidden">
+        <header class="app-header">
+            <h1>Basic Skincare Routine</h1>
+            <div class="header-controls">
+                <div class="routine-mode">
+                    <label class="switch">
+                        <input type="checkbox" id="dayNightToggle">
+                        <span class="slider"></span>
+                    </label>
+                    <span id="mode-label">Daytime</span>
+                </div>
+                <button id="save-btn" class="btn btn-secondary">Save</button>
+                <button id="print-btn" class="btn btn-secondary">Print</button>
+                <button id="logout-btn" class="btn btn-outline">Logout</button>
+            </div>
+        </header>
+
+        <main class="routine-container">
+            <div class="routine-grid">
+                <!-- Step 1: Cleanser -->
+                <div class="step-column">
+                    <h2 class="step-title">1 Step Cleanser</h2>
+                    <div class="step-divider"></div>
+                    <div class="products-list" data-step="cleanser">
+                        <div class="product-item">
+                            <input type="text" class="product-name" placeholder="Product" value="Product">
+                            <input type="checkbox" class="product-checkbox">
+                            <textarea class="product-notes" placeholder="Add notes..."></textarea>
+                        </div>
+                    </div>
+                    <button class="add-product-btn" data-step="cleanser">+ Add Product</button>
+                </div>
+
+                <!-- Step 2: Toner -->
+                <div class="step-column">
+                    <h2 class="step-title">2 Step Toner</h2>
+                    <div class="step-divider"></div>
+                    <div class="products-list" data-step="toner">
+                        <div class="product-item">
+                            <input type="text" class="product-name" placeholder="Product" value="Product">
+                            <input type="checkbox" class="product-checkbox">
+                            <textarea class="product-notes" placeholder="Add notes..."></textarea>
+                        </div>
+                    </div>
+                    <button class="add-product-btn" data-step="toner">+ Add Product</button>
+                </div>
+
+                <!-- Step 3: Conductive Serum -->
+                <div class="step-column">
+                    <h2 class="step-title">3 Step Conductive Serum</h2>
+                    <div class="step-divider"></div>
+                    <div class="products-list" data-step="serum">
+                        <div class="product-item">
+                            <input type="text" class="product-name" placeholder="Product" value="Product">
+                            <input type="checkbox" class="product-checkbox">
+                            <textarea class="product-notes" placeholder="Add notes..."></textarea>
+                        </div>
+                    </div>
+                    <button class="add-product-btn" data-step="serum">+ Add Product</button>
+                </div>
+
+                <!-- Step 4: Tool -->
+                <div class="step-column">
+                    <h2 class="step-title">4 Step Tool</h2>
+                    <div class="step-divider"></div>
+                    <div class="products-list" data-step="tool">
+                        <div class="product-item">
+                            <input type="text" class="product-name" placeholder="Product" value="Product">
+                            <input type="checkbox" class="product-checkbox">
+                            <textarea class="product-notes" placeholder="Add notes..."></textarea>
+                        </div>
+                    </div>
+                    <button class="add-product-btn" data-step="tool">+ Add Product</button>
+                </div>
+
+                <!-- Step 5: Treatment -->
+                <div class="step-column">
+                    <h2 class="step-title">5 Step Treatment</h2>
+                    <div class="step-divider"></div>
+                    <div class="products-list" data-step="treatment">
+                        <div class="product-item">
+                            <input type="text" class="product-name" placeholder="Product" value="Product">
+                            <input type="checkbox" class="product-checkbox">
+                            <textarea class="product-notes" placeholder="Add notes..."></textarea>
+                        </div>
+                    </div>
+                    <button class="add-product-btn" data-step="treatment">+ Add Product</button>
+                </div>
+
+                <!-- Step 6: SPF (Daytime only) -->
+                <div class="step-column" id="spf-column">
+                    <h2 class="step-title">6 SPF</h2>
+                    <div class="step-divider"></div>
+                    <div class="products-list" data-step="spf">
+                        <div class="product-item">
+                            <input type="text" class="product-name" placeholder="Product" value="Product">
+                            <input type="checkbox" class="product-checkbox">
+                            <textarea class="product-notes" placeholder="Add notes..."></textarea>
+                        </div>
+                    </div>
+                    <button class="add-product-btn" data-step="spf">+ Add Product</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
+
