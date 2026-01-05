@@ -144,6 +144,7 @@ class AuthSystem {
             cleanser: [{ name: 'Product', checked: false, notes: '' }],
             toner: [{ name: 'Product', checked: false, notes: '' }],
             serum: [{ name: 'Product', checked: false, notes: '' }],
+            massage: [{ name: 'Product', checked: false, notes: '' }],
             tool: [{ name: 'Product', checked: false, notes: '' }],
             treatment: [{ name: 'Product', checked: false, notes: '' }],
             spf: [{ name: 'Product', checked: false, notes: '' }]
@@ -306,7 +307,7 @@ class SkincareApp {
         const routine = {};
 
         // Collect data from each step
-        ['cleanser', 'toner', 'serum', 'tool', 'treatment', 'spf'].forEach(step => {
+        ['cleanser', 'toner', 'serum', 'massage', 'tool', 'treatment', 'spf'].forEach(step => {
             const productsList = document.querySelector(`[data-step="${step}"]`);
             if (!productsList) return;
 
@@ -332,7 +333,7 @@ class SkincareApp {
         const saveBtn = document.getElementById('save-btn');
         const originalText = saveBtn.textContent;
         saveBtn.textContent = 'Saved!';
-        saveBtn.style.background = '#50c878';
+        saveBtn.style.background = '#ff1493';
         setTimeout(() => {
             saveBtn.textContent = originalText;
             saveBtn.style.background = '';
