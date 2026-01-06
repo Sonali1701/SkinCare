@@ -77,104 +77,17 @@
                 <div id="checklist-content" class="checklist-content"></div>
             </div>
 
-            <div class="routine-grid">
-                <!-- Step 1: Cleanser -->
-                <div class="step-column">
-                    <h2 class="step-title">1 Step Cleanser</h2>
-                    <div class="step-divider"></div>
-                    <div class="products-list" data-step="cleanser">
-                        <div class="product-item">
-                            <input type="text" class="product-name" placeholder="Product" value="Product">
-                            <input type="checkbox" class="product-checkbox">
-                            <textarea class="product-notes" placeholder="Add notes..."></textarea>
-                        </div>
-                    </div>
-                    <button class="add-product-btn" data-step="cleanser">+ Add Product</button>
+            <!-- Add Step Controls -->
+            <div class="steps-header">
+                <h2>Your Routine Steps</h2>
+                <div class="add-step-controls">
+                    <button id="add-step-start" class="btn btn-secondary">+ Add Step at Start</button>
+                    <button id="add-step-end" class="btn btn-secondary">+ Add Step at End</button>
                 </div>
+            </div>
 
-                <!-- Step 2: Toner -->
-                <div class="step-column">
-                    <h2 class="step-title">2 Step Toner</h2>
-                    <div class="step-divider"></div>
-                    <div class="products-list" data-step="toner">
-                        <div class="product-item">
-                            <input type="text" class="product-name" placeholder="Product" value="Product">
-                            <input type="checkbox" class="product-checkbox">
-                            <textarea class="product-notes" placeholder="Add notes..."></textarea>
-                        </div>
-                    </div>
-                    <button class="add-product-btn" data-step="toner">+ Add Product</button>
-                </div>
-
-                <!-- Step 3: Conductive Serum -->
-                <div class="step-column">
-                    <h2 class="step-title">3 Step Conductive Serum</h2>
-                    <div class="step-divider"></div>
-                    <div class="products-list" data-step="serum">
-                        <div class="product-item">
-                            <input type="text" class="product-name" placeholder="Product" value="Product">
-                            <input type="checkbox" class="product-checkbox">
-                            <textarea class="product-notes" placeholder="Add notes..."></textarea>
-                        </div>
-                    </div>
-                    <button class="add-product-btn" data-step="serum">+ Add Product</button>
-                </div>
-
-                <!-- Step 4: Massage -->
-                <div class="step-column">
-                    <h2 class="step-title">4 Step Massage</h2>
-                    <div class="step-divider"></div>
-                    <div class="products-list" data-step="massage">
-                        <div class="product-item">
-                            <input type="text" class="product-name" placeholder="Product" value="Product">
-                            <input type="checkbox" class="product-checkbox">
-                            <textarea class="product-notes" placeholder="Add notes..."></textarea>
-                        </div>
-                    </div>
-                    <button class="add-product-btn" data-step="massage">+ Add Product</button>
-                </div>
-
-                <!-- Step 5: Tool -->
-                <div class="step-column">
-                    <h2 class="step-title">5 Step Tool</h2>
-                    <div class="step-divider"></div>
-                    <div class="products-list" data-step="tool">
-                        <div class="product-item">
-                            <input type="text" class="product-name" placeholder="Product" value="Product">
-                            <input type="checkbox" class="product-checkbox">
-                            <textarea class="product-notes" placeholder="Add notes..."></textarea>
-                        </div>
-                    </div>
-                    <button class="add-product-btn" data-step="tool">+ Add Product</button>
-                </div>
-
-                <!-- Step 6: Treatment -->
-                <div class="step-column">
-                    <h2 class="step-title">6 Step Treatment</h2>
-                    <div class="step-divider"></div>
-                    <div class="products-list" data-step="treatment">
-                        <div class="product-item">
-                            <input type="text" class="product-name" placeholder="Product" value="Product">
-                            <input type="checkbox" class="product-checkbox">
-                            <textarea class="product-notes" placeholder="Add notes..."></textarea>
-                        </div>
-                    </div>
-                    <button class="add-product-btn" data-step="treatment">+ Add Product</button>
-                </div>
-
-                <!-- Step 7: SPF (Daytime only) -->
-                <div class="step-column" id="spf-column">
-                    <h2 class="step-title">7 SPF</h2>
-                    <div class="step-divider"></div>
-                    <div class="products-list" data-step="spf">
-                        <div class="product-item">
-                            <input type="text" class="product-name" placeholder="Product" value="Product">
-                            <input type="checkbox" class="product-checkbox">
-                            <textarea class="product-notes" placeholder="Add notes..."></textarea>
-                        </div>
-                    </div>
-                    <button class="add-product-btn" data-step="spf">+ Add Product</button>
-                </div>
+            <div class="routine-grid" id="routine-grid">
+                <!-- Steps will be dynamically generated here -->
             </div>
         </main>
     </div>

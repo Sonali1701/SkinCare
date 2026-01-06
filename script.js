@@ -144,13 +144,24 @@ class AuthSystem {
 
     getDefaultRoutine() {
         return {
-            cleanser: [{ name: 'Product', checked: false, notes: '' }],
-            toner: [{ name: 'Product', checked: false, notes: '' }],
-            serum: [{ name: 'Product', checked: false, notes: '' }],
-            massage: [{ name: 'Product', checked: false, notes: '' }],
-            tool: [{ name: 'Product', checked: false, notes: '' }],
-            treatment: [{ name: 'Product', checked: false, notes: '' }],
-            spf: [{ name: 'Product', checked: false, notes: '' }]
+            steps: [
+                { id: 'step_1', name: 'Cleanser', order: 1, isSPF: false },
+                { id: 'step_2', name: 'Toner', order: 2, isSPF: false },
+                { id: 'step_3', name: 'Conductive Serum', order: 3, isSPF: false },
+                { id: 'step_4', name: 'Massage', order: 4, isSPF: false },
+                { id: 'step_5', name: 'Tool', order: 5, isSPF: false },
+                { id: 'step_6', name: 'Treatment', order: 6, isSPF: false },
+                { id: 'step_7', name: 'SPF', order: 7, isSPF: true }
+            ],
+            products: {
+                step_1: [{ name: 'Product', checked: false, notes: '' }],
+                step_2: [{ name: 'Product', checked: false, notes: '' }],
+                step_3: [{ name: 'Product', checked: false, notes: '' }],
+                step_4: [{ name: 'Product', checked: false, notes: '' }],
+                step_5: [{ name: 'Product', checked: false, notes: '' }],
+                step_6: [{ name: 'Product', checked: false, notes: '' }],
+                step_7: [{ name: 'Product', checked: false, notes: '' }]
+            }
         };
     }
 }
@@ -224,6 +235,7 @@ const PRODUCT_DATABASE = [
 class SkincareApp {
     constructor() {
         this.isDaytime = true;
+        this.stepCounter = 7; // Start from 7 since we have 7 default steps
         this.init();
     }
 
@@ -246,52 +258,468 @@ class SkincareApp {
             this.printRoutine();
         });
 
-        // Add product buttons
-        document.querySelectorAll('.add-product-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const step = e.target.dataset.step;
-                this.addProduct(step);
-            });
+        // Add step buttons
+        document.getElementById('add-step-start').addEventListener('click', () => {
+            this.addStepAtPosition(1);
+        });
+        
+        document.getElementById('add-step-end').addEventListener('click', () => {
+            this.addStepAtPosition(null);
         });
 
         // Initial mode update
         this.updateMode();
+        
+        // Load or create default steps
+        this.loadSteps();
     }
 
     updateMode() {
         const label = document.getElementById('mode-label');
-        const spfColumn = document.getElementById('spf-column');
         
         if (this.isDaytime) {
             label.textContent = 'Daytime';
-            spfColumn.classList.remove('hidden-night');
         } else {
             label.textContent = 'Nighttime';
-            spfColumn.classList.add('hidden-night');
+        }
+        
+        // Update SPF step visibility
+        document.querySelectorAll('.step-column[data-is-spf="true"]').forEach(column => {
+            if (this.isDaytime) {
+                column.classList.remove('hidden-night');
+            } else {
+                column.classList.add('hidden-night');
+            }
+        });
+    }
+
+    migrateRoutine(oldRoutine) {
+        // Check if it's already in new format
+        if (oldRoutine.steps && oldRoutine.products) {
+            return oldRoutine;
+        }
+
+        // Old format: { cleanser: [...], toner: [...], ... }
+        // New format: { steps: [...], products: { step_1: [...], ... } }
+        const stepMapping = {
+            cleanser: { name: 'Cleanser', order: 1, isSPF: false },
+            toner: { name: 'Toner', order: 2, isSPF: false },
+            serum: { name: 'Conductive Serum', order: 3, isSPF: false },
+            massage: { name: 'Massage', order: 4, isSPF: false },
+            tool: { name: 'Tool', order: 5, isSPF: false },
+            treatment: { name: 'Treatment', order: 6, isSPF: false },
+            spf: { name: 'SPF', order: 7, isSPF: true }
+        };
+
+        const newRoutine = {
+            steps: [],
+            products: {}
+        };
+
+        Object.keys(stepMapping).forEach((oldKey, index) => {
+            const stepInfo = stepMapping[oldKey];
+            const stepId = `step_${index + 1}`;
+            
+            newRoutine.steps.push({
+                id: stepId,
+                name: stepInfo.name,
+                order: stepInfo.order,
+                isSPF: stepInfo.isSPF
+            });
+
+            newRoutine.products[stepId] = oldRoutine[oldKey] || [{ name: 'Product', checked: false, notes: '' }];
+        });
+
+        return newRoutine;
+    }
+
+    loadSteps() {
+        if (!auth.currentUser) {
+            // Create default steps for new user
+            this.renderSteps(auth.getDefaultRoutine());
+            return;
+        }
+
+        const users = JSON.parse(localStorage.getItem('skincareUsers') || '{}');
+        const user = users[auth.currentUser];
+        if (!user) {
+            this.renderSteps(auth.getDefaultRoutine());
+            return;
+        }
+
+        const mode = this.isDaytime ? 'daytime' : 'nighttime';
+        let routine = user.routines[mode];
+        
+        if (!routine) {
+            routine = auth.getDefaultRoutine();
+        } else {
+            // Migrate old format to new format if needed
+            routine = this.migrateRoutine(routine);
+            
+            // Save migrated routine back
+            user.routines[mode] = routine;
+            users[auth.currentUser] = user;
+            localStorage.setItem('skincareUsers', JSON.stringify(users));
+        }
+        
+        this.renderSteps(routine);
+    }
+
+    renderSteps(routine) {
+        const routineGrid = document.getElementById('routine-grid');
+        routineGrid.innerHTML = '';
+
+        // Sort steps by order
+        const sortedSteps = [...routine.steps].sort((a, b) => a.order - b.order);
+
+        sortedSteps.forEach((step, index) => {
+            const stepColumn = this.createStepColumn(step, routine.products[step.id] || []);
+            routineGrid.appendChild(stepColumn);
+        });
+
+        // Update step counter
+        if (sortedSteps.length > 0) {
+            const stepIds = sortedSteps.map(s => {
+                const match = s.id.match(/step_(\d+)/);
+                return match ? parseInt(match[1]) : 0;
+            });
+            this.stepCounter = Math.max(...stepIds, 0);
+        } else {
+            this.stepCounter = 0;
         }
     }
 
-    loadRoutine() {
+    createStepColumn(step, products) {
+        const stepColumn = document.createElement('div');
+        stepColumn.className = 'step-column';
+        stepColumn.dataset.stepId = step.id;
+        stepColumn.dataset.isSpf = step.isSPF ? 'true' : 'false';
+        
+        if (step.isSPF && !this.isDaytime) {
+            stepColumn.classList.add('hidden-night');
+        }
+
+        const stepNumber = step.order;
+        
+        // Step header with controls
+        const stepHeader = document.createElement('div');
+        stepHeader.className = 'step-header';
+        
+        // Step title display
+        const titleDisplay = document.createElement('div');
+        titleDisplay.className = 'step-title-display';
+        titleDisplay.textContent = `${stepNumber} Step ${step.name}`;
+        
+        // Step title input (hidden by default)
+        const titleInput = document.createElement('input');
+        titleInput.type = 'text';
+        titleInput.className = 'step-title-input hidden';
+        titleInput.value = step.name;
+        
+        // Control buttons container
+        const controlsDiv = document.createElement('div');
+        controlsDiv.className = 'step-controls';
+        
+        // Add step before button
+        const addBeforeBtn = document.createElement('button');
+        addBeforeBtn.className = 'step-control-btn add-before-btn';
+        addBeforeBtn.innerHTML = '⬆';
+        addBeforeBtn.title = 'Add Step Before';
+        addBeforeBtn.addEventListener('click', () => {
+            this.addStepAtPosition(step.order);
+        });
+        
+        // Add step after button
+        const addAfterBtn = document.createElement('button');
+        addAfterBtn.className = 'step-control-btn add-after-btn';
+        addAfterBtn.innerHTML = '⬇';
+        addAfterBtn.title = 'Add Step After';
+        addAfterBtn.addEventListener('click', () => {
+            this.addStepAtPosition(step.order + 1);
+        });
+        
+        // Shift left button
+        const shiftLeftBtn = document.createElement('button');
+        shiftLeftBtn.className = 'step-control-btn shift-left-btn';
+        shiftLeftBtn.innerHTML = '◀';
+        shiftLeftBtn.title = 'Move Left';
+        shiftLeftBtn.addEventListener('click', () => {
+            this.shiftStep(step.id, 'left');
+        });
+        
+        // Shift right button
+        const shiftRightBtn = document.createElement('button');
+        shiftRightBtn.className = 'step-control-btn shift-right-btn';
+        shiftRightBtn.innerHTML = '▶';
+        shiftRightBtn.title = 'Move Right';
+        shiftRightBtn.addEventListener('click', () => {
+            this.shiftStep(step.id, 'right');
+        });
+        
+        // Rename button
+        const renameBtn = document.createElement('button');
+        renameBtn.className = 'step-control-btn rename-btn';
+        renameBtn.innerHTML = '✏️';
+        renameBtn.title = 'Rename Step';
+        renameBtn.addEventListener('click', () => {
+            titleDisplay.classList.add('hidden');
+            titleInput.classList.remove('hidden');
+            titleInput.focus();
+            titleInput.select();
+        });
+        
+        // Delete button
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'step-control-btn delete-btn';
+        deleteBtn.innerHTML = '🗑️';
+        deleteBtn.title = 'Delete Step';
+        deleteBtn.addEventListener('click', () => {
+            this.deleteStep(step.id);
+        });
+        
+        // Handle title input
+        titleInput.addEventListener('blur', () => {
+            const newName = titleInput.value.trim() || step.name;
+            this.updateStepName(step.id, newName);
+            titleDisplay.textContent = `${stepNumber} Step ${newName}`;
+            titleDisplay.classList.remove('hidden');
+            titleInput.classList.add('hidden');
+        });
+        
+        titleInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.target.blur();
+            }
+            if (e.key === 'Escape') {
+                titleInput.value = step.name;
+                titleDisplay.classList.remove('hidden');
+                titleInput.classList.add('hidden');
+            }
+        });
+
+        controlsDiv.appendChild(addBeforeBtn);
+        controlsDiv.appendChild(addAfterBtn);
+        controlsDiv.appendChild(shiftLeftBtn);
+        controlsDiv.appendChild(shiftRightBtn);
+        controlsDiv.appendChild(renameBtn);
+        controlsDiv.appendChild(deleteBtn);
+        
+        stepHeader.appendChild(titleDisplay);
+        stepHeader.appendChild(titleInput);
+        stepHeader.appendChild(controlsDiv);
+
+        const stepDivider = document.createElement('div');
+        stepDivider.className = 'step-divider';
+
+        const productsList = document.createElement('div');
+        productsList.className = 'products-list';
+        productsList.dataset.step = step.id;
+
+        // Add products
+        if (products.length === 0) {
+            products = [{ name: 'Product', checked: false, notes: '' }];
+        }
+        products.forEach((product, index) => {
+            const productEl = this.createProductElement(step.id, product, index);
+            productsList.appendChild(productEl);
+        });
+
+        const addProductBtn = document.createElement('button');
+        addProductBtn.className = 'add-product-btn';
+        addProductBtn.dataset.step = step.id;
+        addProductBtn.textContent = '+ Add Product';
+        addProductBtn.addEventListener('click', () => {
+            this.addProduct(step.id);
+        });
+
+        stepColumn.appendChild(stepHeader);
+        stepColumn.appendChild(stepDivider);
+        stepColumn.appendChild(productsList);
+        stepColumn.appendChild(addProductBtn);
+
+        return stepColumn;
+    }
+
+    addStepAtPosition(position) {
+        if (!auth.currentUser) {
+            alert('Please login to add steps');
+            return;
+        }
+
+        const stepName = prompt('Enter step name:', 'New Step');
+        if (!stepName || !stepName.trim()) return;
+
+        this.stepCounter++;
+        const stepId = `step_${this.stepCounter}`;
+
+        const users = JSON.parse(localStorage.getItem('skincareUsers') || '{}');
+        const user = users[auth.currentUser];
+        const mode = this.isDaytime ? 'daytime' : 'nighttime';
+        let routine = user.routines[mode];
+        
+        if (!routine) {
+            routine = auth.getDefaultRoutine();
+        } else {
+            // Migrate if needed
+            routine = this.migrateRoutine(routine);
+        }
+
+        // Determine new order
+        let newOrder;
+        if (position === null || position > routine.steps.length) {
+            // Add at the end
+            newOrder = routine.steps.length + 1;
+        } else {
+            // Insert at specific position
+            newOrder = Math.max(1, Math.min(routine.steps.length + 1, position));
+            // Shift all steps at or after this position
+            routine.steps.forEach(step => {
+                if (step.order >= newOrder) {
+                    step.order++;
+                }
+            });
+        }
+
+        // Create new step
+        const newStep = {
+            id: stepId,
+            name: stepName.trim(),
+            order: newOrder,
+            isSPF: false
+        };
+
+        routine.steps.push(newStep);
+        routine.products[stepId] = [{ name: 'Product', checked: false, notes: '' }];
+
+        // Reorder all steps to ensure sequential ordering
+        routine.steps.sort((a, b) => a.order - b.order);
+        routine.steps.forEach((step, index) => {
+            step.order = index + 1;
+        });
+
+        user.routines[mode] = routine;
+        users[auth.currentUser] = user;
+        localStorage.setItem('skincareUsers', JSON.stringify(users));
+
+        this.renderSteps(routine);
+    }
+
+    shiftStep(stepId, direction) {
         if (!auth.currentUser) return;
 
         const users = JSON.parse(localStorage.getItem('skincareUsers') || '{}');
         const user = users[auth.currentUser];
-        if (!user) return;
-
         const mode = this.isDaytime ? 'daytime' : 'nighttime';
-        const routine = user.routines[mode] || auth.getDefaultRoutine();
+        let routine = user.routines[mode];
+        
+        if (!routine) {
+            routine = auth.getDefaultRoutine();
+        } else {
+            // Migrate if needed
+            routine = this.migrateRoutine(routine);
+        }
 
-        // Load each step
-        Object.keys(routine).forEach(step => {
-            const productsList = document.querySelector(`[data-step="${step}"]`);
-            if (!productsList) return;
+        const step = routine.steps.find(s => s.id === stepId);
+        if (!step) return;
 
-            productsList.innerHTML = '';
-            routine[step].forEach((product, index) => {
-                const productEl = this.createProductElement(step, product, index);
-                productsList.appendChild(productEl);
-            });
+        const currentOrder = step.order;
+        let newOrder;
+
+        if (direction === 'left') {
+            newOrder = Math.max(1, currentOrder - 1);
+        } else {
+            newOrder = Math.min(routine.steps.length, currentOrder + 1);
+        }
+
+        if (newOrder === currentOrder) return;
+
+        // Swap with the step at newOrder
+        const otherStep = routine.steps.find(s => s.order === newOrder);
+        if (otherStep) {
+            step.order = newOrder;
+            otherStep.order = currentOrder;
+        }
+
+        // Reorder all steps
+        routine.steps.sort((a, b) => a.order - b.order);
+        routine.steps.forEach((s, index) => {
+            s.order = index + 1;
         });
+
+        user.routines[mode] = routine;
+        users[auth.currentUser] = user;
+        localStorage.setItem('skincareUsers', JSON.stringify(users));
+
+        this.renderSteps(routine);
+    }
+
+    deleteStep(stepId) {
+        if (!auth.currentUser) return;
+
+        if (!confirm('Are you sure you want to delete this step? All products in this step will be removed.')) {
+            return;
+        }
+
+        const users = JSON.parse(localStorage.getItem('skincareUsers') || '{}');
+        const user = users[auth.currentUser];
+        const mode = this.isDaytime ? 'daytime' : 'nighttime';
+        let routine = user.routines[mode];
+        
+        if (!routine) {
+            routine = auth.getDefaultRoutine();
+        } else {
+            // Migrate if needed
+            routine = this.migrateRoutine(routine);
+        }
+
+        // Remove step
+        routine.steps = routine.steps.filter(s => s.id !== stepId);
+        delete routine.products[stepId];
+
+        // Reorder remaining steps
+        routine.steps.forEach((step, index) => {
+            step.order = index + 1;
+        });
+
+        user.routines[mode] = routine;
+        users[auth.currentUser] = user;
+        localStorage.setItem('skincareUsers', JSON.stringify(users));
+
+        this.renderSteps(routine);
+    }
+
+    updateStepName(stepId, stepName) {
+        if (!auth.currentUser) return;
+
+        const users = JSON.parse(localStorage.getItem('skincareUsers') || '{}');
+        const user = users[auth.currentUser];
+        const mode = this.isDaytime ? 'daytime' : 'nighttime';
+        let routine = user.routines[mode];
+        
+        if (!routine) {
+            routine = auth.getDefaultRoutine();
+        } else {
+            // Migrate if needed
+            routine = this.migrateRoutine(routine);
+        }
+
+        const step = routine.steps.find(s => s.id === stepId);
+        if (step) {
+            step.name = stepName.trim() || 'New Step';
+            const stepNumber = step.order;
+            const titleDisplay = document.querySelector(`[data-step-id="${stepId}"] .step-title-display`);
+            if (titleDisplay) {
+                titleDisplay.textContent = `${stepNumber} Step ${step.name}`;
+            }
+        }
+
+        user.routines[mode] = routine;
+        users[auth.currentUser] = user;
+        localStorage.setItem('skincareUsers', JSON.stringify(users));
+    }
+
+    loadRoutine() {
+        this.loadSteps();
     }
 
     createProductElement(step, product, index) {
@@ -452,18 +880,18 @@ class SkincareApp {
         const mode = this.isDaytime ? 'daytime' : 'nighttime';
         const routine = {};
 
-        // Collect data from each step
-        ['cleanser', 'toner', 'serum', 'massage', 'tool', 'treatment', 'spf'].forEach(step => {
-            const productsList = document.querySelector(`[data-step="${step}"]`);
+        // Update products for each step
+        routine.steps.forEach(step => {
+            const productsList = document.querySelector(`[data-step="${step.id}"]`);
             if (!productsList) return;
 
-            routine[step] = [];
+            routine.products[step.id] = [];
             Array.from(productsList.children).forEach(productItem => {
                 const nameInput = productItem.querySelector('.product-name');
                 const checkbox = productItem.querySelector('.product-checkbox');
                 const notesTextarea = productItem.querySelector('.product-notes');
 
-                routine[step].push({
+                routine.products[step.id].push({
                     name: nameInput.value.trim() || 'Product',
                     checked: checkbox.checked,
                     notes: notesTextarea.value.trim()
@@ -494,33 +922,27 @@ class SkincareApp {
         }, 2000);
 
         // Show checklist summary
-        this.showChecklistSummary(routine);
+        this.showChecklistSummary(displayRoutine);
     }
 
     showChecklistSummary(routine) {
         const checklistSummary = document.getElementById('checklist-summary');
         const checklistContent = document.getElementById('checklist-content');
         
-        const stepNames = {
-            cleanser: '1. Cleanser',
-            toner: '2. Toner',
-            serum: '3. Conductive Serum',
-            massage: '4. Massage',
-            tool: '5. Tool',
-            treatment: '6. Treatment',
-            spf: '7. SPF'
-        };
+        // Sort steps by order
+        const sortedSteps = [...routine.steps].sort((a, b) => a.order - b.order);
 
         let html = '<div class="checklist-grid">';
         
-        Object.keys(stepNames).forEach(step => {
-            if (step === 'spf' && !this.isDaytime) return;
+        sortedSteps.forEach(step => {
+            // Skip SPF in nighttime mode
+            if (step.isSPF && !this.isDaytime) return;
             
-            const products = routine[step] || [];
+            const products = routine.products[step.id] || [];
             if (products.length === 0) return;
 
             html += `<div class="checklist-step">`;
-            html += `<h3>${stepNames[step]}</h3>`;
+            html += `<h3>${step.order}. ${step.name}</h3>`;
             html += '<ul class="checklist-items">';
             
             products.forEach(product => {
@@ -549,17 +971,15 @@ class SkincareApp {
     printRoutine() {
         // Create print-friendly version
         const printWindow = window.open('', '_blank');
-        const routine = this.getCurrentRoutine();
+        let routine = this.getCurrentRoutine();
         
-        const stepNames = {
-            cleanser: '1. Cleanser',
-            toner: '2. Toner',
-            serum: '3. Conductive Serum',
-            massage: '4. Massage',
-            tool: '5. Tool',
-            treatment: '6. Treatment',
-            spf: '7. SPF'
-        };
+        // Migrate if needed
+        if (!routine.steps || !Array.isArray(routine.steps)) {
+            routine = this.migrateRoutine(routine);
+        }
+        
+        // Sort steps by order
+        const sortedSteps = [...routine.steps].sort((a, b) => a.order - b.order);
 
         let html = `
         <!DOCTYPE html>
@@ -663,14 +1083,15 @@ class SkincareApp {
             <div class="print-grid">
         `;
 
-        Object.keys(stepNames).forEach(step => {
-            if (step === 'spf' && !this.isDaytime) return;
+        sortedSteps.forEach(step => {
+            // Skip SPF in nighttime mode
+            if (step.isSPF && !this.isDaytime) return;
             
-            const products = routine[step] || [];
+            const products = routine.products[step.id] || [];
             if (products.length === 0) return;
 
             html += `<div class="print-step">`;
-            html += `<h3>${stepNames[step]}</h3>`;
+            html += `<h3>${step.order}. ${step.name}</h3>`;
             html += '<ul class="print-items">';
             
             products.forEach(product => {
@@ -700,14 +1121,14 @@ class SkincareApp {
     }
 
     getCurrentRoutine() {
-        if (!auth.currentUser) return {};
+        if (!auth.currentUser) return auth.getDefaultRoutine();
 
         const users = JSON.parse(localStorage.getItem('skincareUsers') || '{}');
         const user = users[auth.currentUser];
-        if (!user) return {};
+        if (!user) return auth.getDefaultRoutine();
 
         const mode = this.isDaytime ? 'daytime' : 'nighttime';
-        return user.routines[mode] || {};
+        return user.routines[mode] || auth.getDefaultRoutine();
     }
 }
 
