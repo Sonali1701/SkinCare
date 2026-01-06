@@ -204,7 +204,20 @@ const PRODUCT_DATABASE = [
     'ISDIN Photo Eryfotona Ageless Ultralight Emulsion',
     'Embryolisse Lait-Crème Concentré',
     'Celimax Pore + Dark Spot Brightening Cream.',
-    'Medicube Deep Vita C Pad'
+    'Medicube Deep Vita C Pad',
+    // Tool products
+    'Red Light Mask',
+    'Red Light Neck',
+    'Guacha tool',
+    'Red light therapy',
+    'Microneedle',
+    'Microneedle infusion',
+    'Medicube Age R Booster Pro',
+    'AngelLift',
+    'INIA Flare',
+    'Face cupping',
+    'INIA Lumin',
+    'Nuderma Clinical'
 ];
 
 // Main Application
@@ -332,11 +345,16 @@ class SkincareApp {
         });
 
         // Close autocomplete when clicking outside
-        document.addEventListener('click', (e) => {
+        const closeAutocomplete = (e) => {
             if (!nameWrapper.contains(e.target)) {
                 autocompleteList.innerHTML = '';
+                const productItem = nameWrapper.closest('.product-item');
+                if (productItem) {
+                    productItem.classList.remove('dropdown-open');
+                }
             }
-        });
+        };
+        document.addEventListener('click', closeAutocomplete);
 
         productItem.appendChild(nameWrapper);
         productItem.appendChild(deleteBtn);
@@ -349,9 +367,13 @@ class SkincareApp {
     handleProductSearch(input, wrapper) {
         const query = input.value.toLowerCase().trim();
         const autocompleteList = wrapper.querySelector('.autocomplete-list');
+        const productItem = wrapper.closest('.product-item');
         
         if (query.length < 1) {
             autocompleteList.innerHTML = '';
+            if (productItem) {
+                productItem.classList.remove('dropdown-open');
+            }
             return;
         }
 
@@ -362,11 +384,18 @@ class SkincareApp {
 
         if (matches.length === 0) {
             autocompleteList.innerHTML = '';
+            if (productItem) {
+                productItem.classList.remove('dropdown-open');
+            }
             return;
         }
 
         // Create dropdown items
         autocompleteList.innerHTML = '';
+        if (productItem) {
+            productItem.classList.add('dropdown-open');
+        }
+        
         matches.forEach(product => {
             const item = document.createElement('div');
             item.className = 'autocomplete-item';
@@ -374,6 +403,9 @@ class SkincareApp {
             item.addEventListener('click', () => {
                 input.value = product;
                 autocompleteList.innerHTML = '';
+                if (productItem) {
+                    productItem.classList.remove('dropdown-open');
+                }
                 input.focus();
                 this.autoSave();
             });
