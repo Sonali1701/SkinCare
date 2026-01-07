@@ -70,6 +70,11 @@
             </div>
         </header>
 
+        <nav class="app-tabs" id="app-tabs">
+            <button class="app-tab-btn active" data-app-tab="routine">Routine</button>
+            <button class="app-tab-btn" data-app-tab="products">Products</button>
+        </nav>
+
         <main class="routine-container">
             <!-- Saved Checklist Summary -->
             <div id="checklist-summary" class="checklist-summary hidden">
@@ -90,8 +95,21 @@
                 <!-- Steps will be dynamically generated here -->
             </div>
         </main>
+
+        <main id="products-container" class="products-container hidden">
+            <div class="products-header">
+                <h2>Products</h2>
+                <div class="products-controls">
+                    <input id="products-search" type="text" placeholder="Search products..." />
+                    <label class="btn btn-secondary" for="products-file-input">Upload Excel</label>
+                    <input id="products-file-input" type="file" accept=".xlsx" class="hidden" />
+                </div>
+            </div>
+            <div id="products-list" class="products-list"></div>
+        </main>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="script.js"></script>
 </body>
 </html>

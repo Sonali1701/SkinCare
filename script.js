@@ -236,6 +236,9 @@ class SkincareApp {
     constructor() {
         this.isDaytime = true;
         this.stepCounter = 7; // Start from 7 since we have 7 default steps
+        this.activeAppTab = 'routine';
+        this.allProducts = [];
+        this.filteredProducts = [];
         this.init();
     }
 
@@ -247,6 +250,10 @@ class SkincareApp {
             this.updateMode();
         });
         toggle.checked = true; // Default to daytime
+
+        // App tabs
+        this.setupAppTabs();
+        this.setupProductsTab();
 
         // Save button
         document.getElementById('save-btn').addEventListener('click', () => {
@@ -272,6 +279,200 @@ class SkincareApp {
         
         // Load or create default steps
         this.loadSteps();
+    }
+
+    setupAppTabs() {
+        const tabButtons = document.querySelectorAll('.app-tab-btn');
+        tabButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const tab = e.currentTarget.dataset.appTab;
+                this.switchAppTab(tab);
+            });
+        });
+
+        this.switchAppTab(this.activeAppTab);
+    }
+
+    switchAppTab(tab) {
+        this.activeAppTab = tab;
+
+        document.querySelectorAll('.app-tab-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.appTab === tab);
+        });
+
+        const routineContainer = document.querySelector('main.routine-container');
+        const productsContainer = document.getElementById('products-container');
+
+        if (routineContainer) {
+            routineContainer.classList.toggle('hidden', tab !== 'routine');
+        }
+        if (productsContainer) {
+            productsContainer.classList.toggle('hidden', tab !== 'products');
+        }
+
+        if (tab === 'products') {
+            this.ensureProductsLoaded();
+        }
+    }
+
+    setupProductsTab() {
+        const searchInput = document.getElementById('products-search');
+        if (searchInput) {
+            searchInput.addEventListener('input', () => {
+                this.applyProductsFilter();
+            });
+        }
+
+        const fileInput = document.getElementById('products-file-input');
+        if (fileInput) {
+            fileInput.addEventListener('change', async (e) => {
+                const file = e.target.files && e.target.files[0];
+                if (!file) return;
+                await this.loadProductsFromFile(file);
+            });
+        }
+    }
+
+    setProductsStatus(text) {
+        const statusEl = document.getElementById('products-status');
+        if (statusEl) statusEl.textContent = text;
+    }
+
+    ensureProductsLoaded() {
+        if (this.allProducts && this.allProducts.length > 0) {
+            this.applyProductsFilter();
+            return;
+        }
+
+        this.setProductsStatus('Loading products from Excel...');
+        this.loadProductsFromWorkbookPath('Skincare Routine.xlsx')
+            .then(products => {
+                if (products && products.length > 0) {
+                    this.allProducts = products;
+                    this.setProductsStatus(`Loaded ${products.length} products from Excel.`);
+                } else {
+                    this.allProducts = [...PRODUCT_DATABASE];
+                    this.setProductsStatus(`Could not read Excel automatically. Showing ${this.allProducts.length} products from built-in list. You can use "Upload Excel".`);
+                }
+                this.applyProductsFilter();
+            })
+            .catch(() => {
+                this.allProducts = [...PRODUCT_DATABASE];
+                this.setProductsStatus(`Could not read Excel automatically. Showing ${this.allProducts.length} products from built-in list. You can use "Upload Excel".`);
+                this.applyProductsFilter();
+            });
+    }
+
+    applyProductsFilter() {
+        const searchInput = document.getElementById('products-search');
+        const q = (searchInput ? searchInput.value : '').trim().toLowerCase();
+
+        const unique = Array.from(new Set((this.allProducts || []).map(p => (p || '').trim()).filter(Boolean)));
+        const filtered = q
+            ? unique.filter(p => p.toLowerCase().includes(q))
+            : unique;
+
+        this.filteredProducts = filtered;
+        this.renderProducts();
+    }
+
+    renderProducts() {
+        const listEl = document.getElementById('products-list');
+        if (!listEl) return;
+
+        const rows = (this.filteredProducts || []).map((p, idx) => {
+            const safe = String(p);
+            return `<tr><td>${idx + 1}</td><td>${safe}</td></tr>`;
+        }).join('');
+
+        listEl.innerHTML = `
+            <table class="products-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Product</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rows || '<tr><td colspan="2">No products found.</td></tr>'}
+                </tbody>
+            </table>
+        `;
+    }
+
+    async loadProductsFromFile(file) {
+        this.setProductsStatus('Reading uploaded Excel...');
+
+        if (!window.XLSX) {
+            this.setProductsStatus('Excel parser not available. Please check your internet connection (xlsx CDN).');
+            return;
+        }
+
+        const arrayBuffer = await file.arrayBuffer();
+        const workbook = window.XLSX.read(arrayBuffer, { type: 'array' });
+        const products = this.extractProductsFromWorkbook(workbook);
+
+        if (products.length === 0) {
+            this.setProductsStatus('No products found in uploaded Excel.');
+            return;
+        }
+
+        this.allProducts = products;
+        this.setProductsStatus(`Loaded ${products.length} products from uploaded Excel.`);
+        this.applyProductsFilter();
+    }
+
+    async loadProductsFromWorkbookPath(path) {
+        if (!window.XLSX) {
+            return [];
+        }
+
+        const resp = await fetch(path);
+        if (!resp.ok) {
+            return [];
+        }
+
+        const arrayBuffer = await resp.arrayBuffer();
+        const workbook = window.XLSX.read(arrayBuffer, { type: 'array' });
+        return this.extractProductsFromWorkbook(workbook);
+    }
+
+    extractProductsFromWorkbook(workbook) {
+        try {
+            const sheetNames = workbook.SheetNames || [];
+            const all = [];
+
+            sheetNames.forEach(name => {
+                const ws = workbook.Sheets[name];
+                if (!ws) return;
+
+                const rows = window.XLSX.utils.sheet_to_json(ws, { header: 1, raw: false });
+                if (!rows || rows.length === 0) return;
+
+                rows.forEach((row, rIdx) => {
+                    if (!row) return;
+                    row.forEach((cell, cIdx) => {
+                        if (cell == null) return;
+                        const text = String(cell).trim();
+                        if (!text) return;
+                        if (rIdx === 0 && cIdx === 0) {
+                            // Allow header cells to be processed too (some sheets are just lists)
+                        }
+                        // Basic heuristics: filter out obvious non-product placeholders
+                        if (text.length < 2) return;
+                        all.push(text);
+                    });
+                });
+            });
+
+            // Try to reduce noise by removing common headers
+            const banned = new Set(['product', 'products', 'notes', 'step', 'steps', 'brand']);
+            return all
+                .map(s => s.trim())
+                .filter(s => s && !banned.has(s.toLowerCase()));
+        } catch {
+            return [];
+        }
     }
 
     updateMode() {
