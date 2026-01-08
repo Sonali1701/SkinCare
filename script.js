@@ -1079,28 +1079,40 @@ class SkincareApp {
         if (!user) return;
 
         const mode = this.isDaytime ? 'daytime' : 'nighttime';
-        const routine = {};
+        let routine = user.routines[mode] || auth.getDefaultRoutine();
+
+        // Migrate if needed
+        routine = this.migrateRoutine(routine);
 
         // Update products for each step
-        routine.steps.forEach(step => {
-            const productsList = document.querySelector(`[data-step="${step.id}"]`);
-            if (!productsList) return;
+        const updatedRoutine = {
+            steps: Array.isArray(routine.steps) ? routine.steps : [],
+            products: {}
+        };
 
-            routine.products[step.id] = [];
+        updatedRoutine.steps.forEach(step => {
+            const productsList = document.querySelector(`[data-step="${step.id}"]`);
+
+            if (!productsList) {
+                updatedRoutine.products[step.id] = (routine.products && routine.products[step.id]) ? routine.products[step.id] : [];
+                return;
+            }
+
+            updatedRoutine.products[step.id] = [];
             Array.from(productsList.children).forEach(productItem => {
                 const nameInput = productItem.querySelector('.product-name');
                 const checkbox = productItem.querySelector('.product-checkbox');
                 const notesTextarea = productItem.querySelector('.product-notes');
 
-                routine.products[step.id].push({
-                    name: nameInput.value.trim() || 'Product',
-                    checked: checkbox.checked,
-                    notes: notesTextarea.value.trim()
+                updatedRoutine.products[step.id].push({
+                    name: (nameInput && nameInput.value ? nameInput.value.trim() : '') || 'Product',
+                    checked: !!(checkbox && checkbox.checked),
+                    notes: (notesTextarea && notesTextarea.value ? notesTextarea.value.trim() : '')
                 });
             });
         });
 
-        user.routines[mode] = routine;
+        user.routines[mode] = updatedRoutine;
         users[auth.currentUser] = user;
         localStorage.setItem('skincareUsers', JSON.stringify(users));
     }
@@ -1239,8 +1251,8 @@ class SkincareApp {
                     gap: 6px;
                 }
                 .print-item.checked {
-                    text-decoration: line-through;
-                    color: #999;
+                    text-decoration: none;
+                    color: inherit;
                 }
                 .print-checkbox {
                     width: 10px;
