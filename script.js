@@ -1277,6 +1277,12 @@ class SkincareApp {
                 .print-name {
                     flex: 1;
                 }
+                .print-notes {
+                    display: block;
+                    margin-top: 2px;
+                    font-size: 8px;
+                    color: #666;
+                }
                 @media print {
                     @page {
                         size: letter;
@@ -1310,9 +1316,10 @@ class SkincareApp {
             products.forEach(product => {
                 const checked = product.checked ? 'checked' : '';
                 const name = product.name || 'Product';
+                const notes = (product.notes || '').trim();
                 html += `<li class="print-item ${checked}">`;
                 html += `<span class="print-checkbox"></span>`;
-                html += `<span class="print-name">${name}</span>`;
+                html += `<span class="print-name">${name}${notes ? `<span class=\"print-notes\">Notes: ${notes}</span>` : ''}</span>`;
                 html += `</li>`;
             });
             
