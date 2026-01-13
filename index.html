@@ -76,9 +76,22 @@
         </nav>
 
         <main class="routine-container">
+            <section class="routine-library" id="routine-library">
+                <div class="routine-library-main">
+                    <label for="routine-selector" class="routine-label">Routine</label>
+                    <select id="routine-selector" class="routine-select"></select>
+                </div>
+                <div class="routine-library-actions">
+                    <button id="routine-new-btn" class="btn btn-secondary" type="button">New</button>
+                    <button id="routine-rename-btn" class="btn btn-secondary" type="button">Rename</button>
+                    <button id="routine-delete-btn" class="btn btn-outline" type="button">Delete</button>
+                </div>
+                <p id="routine-status" class="routine-status" role="status"></p>
+            </section>
+
             <!-- Saved Checklist Summary -->
             <div id="checklist-summary" class="checklist-summary hidden">
-                <h2>Your Saved Routine Checklist</h2>
+                <h2 id="checklist-title">Routine</h2>
                 <div id="checklist-content" class="checklist-content"></div>
             </div>
 
@@ -110,7 +123,20 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="firebase-config.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script>
+        // Load Firebase configuration (edit firebase-config.js or provide a build-specific override)
+        const firebaseConfig = window.SKINCARE_FIREBASE_CONFIG || null;
+
+        if (!firebaseConfig) {
+            console.warn('Firebase config missing. Update firebase-config.js or provide window.SKINCARE_FIREBASE_CONFIG before loading script.js');
+        } else {
+            firebase.initializeApp(firebaseConfig);
+        }
+    </script>
     <script src="script.js"></script>
 </body>
 </html>
-

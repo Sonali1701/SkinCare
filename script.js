@@ -1,69 +1,136 @@
-// Authentication System
+function createDefaultRoutine() {
+    return {
+        steps: [
+            { id: 'step_1', name: 'Cleanser', order: 1, isSPF: false },
+            { id: 'step_2', name: 'Toner', order: 2, isSPF: false },
+            { id: 'step_3', name: 'Conductive Serum', order: 3, isSPF: false },
+            { id: 'step_4', name: 'Massage', order: 4, isSPF: false },
+            { id: 'step_5', name: 'Tool', order: 5, isSPF: false },
+            { id: 'step_6', name: 'Treatment', order: 6, isSPF: false },
+            { id: 'step_7', name: 'SPF', order: 7, isSPF: true }
+        ],
+        products: {
+            step_1: [{ name: 'Product', checked: false, notes: '' }],
+            step_2: [{ name: 'Product', checked: false, notes: '' }],
+            step_3: [{ name: 'Product', checked: false, notes: '' }],
+            step_4: [{ name: 'Product', checked: false, notes: '' }],
+            step_5: [{ name: 'Product', checked: false, notes: '' }],
+            step_6: [{ name: 'Product', checked: false, notes: '' }],
+            step_7: [{ name: 'Product', checked: false, notes: '' }]
+        }
+    };
+}
+
+// Authentication System powered by Firebase
 class AuthSystem {
-    constructor() {
-        this.users = JSON.parse(localStorage.getItem('skincareUsers') || '{}');
+    constructor(appInstance) {
+        if (!window.firebase || !firebase.auth || !firebase.firestore) {
+            throw new Error('Firebase SDK is required but was not found.');
+        }
+
+        this.appInstance = appInstance || null;
+        this.auth = firebase.auth();
+        this.db = firebase.firestore();
         this.currentUser = null;
+        this.routineCache = null;
+
+        if (this.appInstance && typeof this.appInstance.setAuthSystem === 'function') {
+            this.appInstance.setAuthSystem(this);
+        }
+
         this.init();
     }
 
     init() {
-        // Check if user is already logged in
-        const savedUser = localStorage.getItem('currentUser');
-        if (savedUser && this.users[savedUser]) {
-            this.currentUser = savedUser;
-            this.showApp();
-        } else {
-            this.showAuth();
-        }
-
-        // Setup event listeners
         this.setupAuthListeners();
+        this.auth.onAuthStateChanged(async (user) => {
+            try {
+                await this.handleAuthStateChange(user);
+            } catch (error) {
+                console.error('Failed to process auth state change:', error);
+            }
+        });
     }
 
     setupAuthListeners() {
-        // Tab switching
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
-                const tab = e.target.dataset.tab;
+                const tab = e.currentTarget.dataset.tab;
                 this.switchTab(tab);
             });
         });
 
-        // Login form
         document.getElementById('loginForm').addEventListener('submit', (e) => {
             e.preventDefault();
-            this.login();
+            this.login().catch(error => {
+                console.error('Login failed:', error);
+            });
         });
 
-        // Signup form
         document.getElementById('signupForm').addEventListener('submit', (e) => {
             e.preventDefault();
-            this.signup();
+            this.signup().catch(error => {
+                console.error('Signup failed:', error);
+            });
         });
 
-        // Logout button
         document.getElementById('logout-btn').addEventListener('click', () => {
-            this.logout();
+            this.logout().catch(error => {
+                console.error('Logout failed:', error);
+            });
         });
     }
 
     switchTab(tab) {
         document.querySelectorAll('.tab-btn').forEach(btn => {
-            btn.classList.remove('active');
+            btn.classList.toggle('active', btn.dataset.tab === tab);
         });
         document.querySelectorAll('.auth-form').forEach(form => {
-            form.classList.remove('active');
+            form.classList.toggle('active', form.id === `${tab}-form`);
         });
 
-        document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
-        document.getElementById(`${tab}-form`).classList.add('active');
+        this.clearErrors();
+    }
 
-        // Clear error messages
+    clearErrors() {
         document.getElementById('login-error').textContent = '';
         document.getElementById('signup-error').textContent = '';
     }
 
-    login() {
+    async handleAuthStateChange(user) {
+        if (user) {
+            this.currentUser = user;
+            const library = await this.ensureUserRoutineLibrary(user);
+            this.showApp();
+            if (this.appInstance) {
+                await this.appInstance.onUserAuthenticated(user, library);
+            }
+        } else {
+            this.currentUser = null;
+            this.routineCache = null;
+            this.showAuth();
+            if (this.appInstance) {
+                await this.appInstance.onUserAuthenticated(null, null);
+            }
+        }
+    }
+
+    showAuth() {
+        document.getElementById('auth-container').classList.remove('hidden');
+        document.getElementById('app-container').classList.add('hidden');
+        this.clearErrors();
+        const loginForm = document.getElementById('loginForm');
+        const signupForm = document.getElementById('signupForm');
+        if (loginForm) loginForm.reset();
+        if (signupForm) signupForm.reset();
+    }
+
+    showApp() {
+        document.getElementById('auth-container').classList.add('hidden');
+        document.getElementById('app-container').classList.remove('hidden');
+    }
+
+    async login() {
         const email = document.getElementById('login-email').value.trim();
         const password = document.getElementById('login-password').value;
         const errorEl = document.getElementById('login-error');
@@ -73,17 +140,16 @@ class AuthSystem {
             return;
         }
 
-        if (this.users[email] && this.users[email].password === password) {
-            this.currentUser = email;
-            localStorage.setItem('currentUser', email);
-            this.showApp();
+        try {
+            await this.auth.signInWithEmailAndPassword(email, password);
             errorEl.textContent = '';
-        } else {
-            errorEl.textContent = 'Invalid email or password';
+        } catch (error) {
+            errorEl.textContent = this.getFriendlyError(error);
+            throw error;
         }
     }
 
-    signup() {
+    async signup() {
         const email = document.getElementById('signup-email').value.trim();
         const password = document.getElementById('signup-password').value;
         const errorEl = document.getElementById('signup-error');
@@ -98,48 +164,146 @@ class AuthSystem {
             return;
         }
 
-        if (this.users[email]) {
-            errorEl.textContent = 'Email already registered. Please login.';
-            return;
+        try {
+            const credential = await this.auth.createUserWithEmailAndPassword(email, password);
+            await this.ensureUserRoutineLibrary(credential.user, { forceCreate: true });
+            errorEl.textContent = '';
+        } catch (error) {
+            errorEl.textContent = this.getFriendlyError(error);
+            throw error;
         }
+    }
 
-        // Create new user
-        this.users[email] = {
-            password: password,
-            routines: {
-                daytime: this.getDefaultRoutine(),
-                nighttime: this.getDefaultRoutine()
+    async logout() {
+        await this.auth.signOut();
+    }
+
+    cloneRoutine(routine) {
+        const source = routine && routine.steps ? routine : this.getDefaultRoutine();
+        return JSON.parse(JSON.stringify(source));
+    }
+
+    createRoutinePack(name, daytimeRoutine, nighttimeRoutine) {
+        const timestamp = Date.now();
+        const id = `routine_${timestamp}_${Math.floor(Math.random() * 100000)}`;
+        return {
+            id,
+            name: (name && name.trim()) || 'My Routine',
+            createdAt: timestamp,
+            updatedAt: timestamp,
+            daytime: this.cloneRoutine(daytimeRoutine),
+            nighttime: this.cloneRoutine(nighttimeRoutine)
+        };
+    }
+
+    getCurrentRoutineName() {
+        const library = this.routineLibrary;
+        if (!library || !library.items) return '';
+        const id = this.currentRoutineId || library.currentId;
+        const pack = id ? library.items[id] : null;
+        return pack && pack.name ? String(pack.name) : '';
+    }
+
+    createDefaultLibrary() {
+        const pack = this.createRoutinePack('My Routine');
+        return {
+            currentId: pack.id,
+            order: [pack.id],
+            items: {
+                [pack.id]: pack
             }
         };
-
-        localStorage.setItem('skincareUsers', JSON.stringify(this.users));
-        this.currentUser = email;
-        localStorage.setItem('currentUser', email);
-        this.showApp();
-        errorEl.textContent = '';
     }
 
-    logout() {
-        this.currentUser = null;
-        localStorage.removeItem('currentUser');
-        this.showAuth();
-        // Clear forms
-        document.getElementById('loginForm').reset();
-        document.getElementById('signupForm').reset();
-    }
+    normalizeLibrary(library) {
+        let normalized = library && typeof library === 'object'
+            ? JSON.parse(JSON.stringify(library))
+            : null;
 
-    showAuth() {
-        document.getElementById('auth-container').classList.remove('hidden');
-        document.getElementById('app-container').classList.add('hidden');
-    }
-
-    showApp() {
-        document.getElementById('auth-container').classList.add('hidden');
-        document.getElementById('app-container').classList.remove('hidden');
-        // Load routine after app is initialized
-        if (app) {
-            app.loadRoutine();
+        if (!normalized || typeof normalized !== 'object') {
+            return this.createDefaultLibrary();
         }
+
+        normalized.items = normalized.items && typeof normalized.items === 'object'
+            ? normalized.items
+            : {};
+
+        if (!Array.isArray(normalized.order)) {
+            normalized.order = Object.keys(normalized.items);
+        }
+
+        normalized.order = normalized.order.filter(id => normalized.items[id]);
+
+        if (normalized.order.length === 0 || Object.keys(normalized.items).length === 0) {
+            return this.createDefaultLibrary();
+        }
+
+        if (!normalized.currentId || !normalized.items[normalized.currentId]) {
+            normalized.currentId = normalized.order[0];
+        }
+
+        return normalized;
+    }
+
+    async ensureUserRoutineLibrary(user, options = {}) {
+        if (!user) return null;
+
+        const userRef = this.db.collection('users').doc(user.uid);
+        const snapshot = await userRef.get();
+
+        if (!snapshot.exists || options.forceCreate) {
+            const library = this.createDefaultLibrary();
+            await userRef.set({
+                email: user.email || '',
+                routineLibrary: library,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+
+            this.routineCache = library;
+            return library;
+        }
+
+        const data = snapshot.data() || {};
+        const library = this.normalizeLibrary(data.routineLibrary);
+
+        if (!data.routineLibrary) {
+            await userRef.set({
+                routineLibrary: library,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+        }
+
+        this.routineCache = library;
+        return library;
+    }
+
+    async fetchRoutineLibrary(forceReload = false) {
+        if (!this.currentUser) return null;
+
+        if (!forceReload && this.routineCache) {
+            return this.normalizeLibrary(this.routineCache);
+        }
+
+        const library = await this.ensureUserRoutineLibrary(this.currentUser);
+        return this.normalizeLibrary(library);
+    }
+
+    async saveRoutineLibrary(library) {
+        if (!this.currentUser) {
+            throw new Error('Cannot save routines without an authenticated user.');
+        }
+
+        const normalized = this.normalizeLibrary(library);
+        const userRef = this.db.collection('users').doc(this.currentUser.uid);
+
+        await userRef.set({
+            routineLibrary: normalized,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+
+        this.routineCache = normalized;
+        return normalized;
     }
 
     getDefaultRoutine() {
@@ -163,6 +327,18 @@ class AuthSystem {
                 step_7: [{ name: 'Product', checked: false, notes: '' }]
             }
         };
+    }
+
+    getFriendlyError(error) {
+        if (!error || !error.code) return 'Something went wrong. Please try again.';
+
+        const code = error.code;
+        if (code === 'auth/email-already-in-use') return 'Email already registered. Please login.';
+        if (code === 'auth/invalid-email') return 'Please enter a valid email address.';
+        if (code === 'auth/wrong-password' || code === 'auth/user-not-found') return 'Invalid email or password.';
+        if (code === 'auth/weak-password') return 'Password must be at least 6 characters.';
+
+        return error.message || 'Something went wrong. Please try again.';
     }
 }
 
@@ -239,6 +415,14 @@ class SkincareApp {
         this.activeAppTab = 'routine';
         this.allProducts = [];
         this.filteredProducts = [];
+        this.currentRoutineId = null;
+        this.libraryElements = {};
+        this.statusTimeout = null;
+        this.authSystem = null;
+        this.routineLibrary = null;
+        this.isLibraryLoading = false;
+        this.pendingSaveTimeout = null;
+        this.pendingSaveDelay = 600;
         this.init();
     }
 
@@ -246,14 +430,14 @@ class SkincareApp {
         // Day/Night toggle
         const toggle = document.getElementById('dayNightToggle');
         toggle.addEventListener('change', (e) => {
-            this.isDaytime = e.target.checked;
-            this.updateMode();
+            this.handleModeToggle(e.target.checked);
         });
         toggle.checked = true; // Default to daytime
 
         // App tabs
         this.setupAppTabs();
         this.setupProductsTab();
+        this.setupRoutineLibrary();
 
         // Save button
         document.getElementById('save-btn').addEventListener('click', () => {
@@ -279,6 +463,142 @@ class SkincareApp {
         
         // Load or create default steps
         this.loadSteps();
+    }
+
+    setAuthSystem(authSystem) {
+        this.authSystem = authSystem;
+    }
+
+    async onUserAuthenticated(user, routineLibrary) {
+        if (!user) {
+            this.routineLibrary = null;
+            this.currentRoutineId = null;
+            this.setRoutineControlsDisabled(true);
+            this.renderSteps(createDefaultRoutine());
+            this.refreshRoutineLibraryUI('Login to manage routines.');
+            return;
+        }
+
+        this.routineLibrary = routineLibrary ? this.normalizeLibrary(routineLibrary) : this.normalizeLibrary(null);
+        this.currentRoutineId = this.routineLibrary.currentId || null;
+        this.setRoutineControlsDisabled(false);
+        this.loadRoutine({ statusMessage: 'Routines synced.' });
+    }
+
+    normalizeLibrary(library) {
+        const normalized = library && typeof library === 'object'
+            ? JSON.parse(JSON.stringify(library))
+            : null;
+
+        if (!normalized || !normalized.items || typeof normalized.items !== 'object') {
+            const pack = this.createRoutinePack('My Routine');
+            return {
+                currentId: pack.id,
+                order: [pack.id],
+                items: { [pack.id]: pack }
+            };
+        }
+
+        if (!Array.isArray(normalized.order)) {
+            normalized.order = Object.keys(normalized.items);
+        }
+
+        normalized.order = normalized.order.filter(id => normalized.items[id]);
+
+        if (!normalized.currentId || !normalized.items[normalized.currentId]) {
+            normalized.currentId = normalized.order[0] || Object.keys(normalized.items)[0] || null;
+        }
+
+        if (!normalized.currentId) {
+            const pack = this.createRoutinePack('My Routine');
+            normalized.currentId = pack.id;
+            normalized.order = [pack.id];
+            normalized.items = { [pack.id]: pack };
+        }
+
+        return normalized;
+    }
+
+    ensureRoutineLibrary() {
+        if (!this.getCurrentUser()) {
+            this.routineLibrary = null;
+            return null;
+        }
+
+        if (!this.routineLibrary) {
+            this.routineLibrary = this.normalizeLibrary(null);
+            this.queueLibrarySave();
+        }
+
+        return this.routineLibrary;
+    }
+
+    queueLibrarySave() {
+        if (!this.authSystem || !this.getCurrentUser() || !this.routineLibrary) {
+            return;
+        }
+
+        this.setRoutineStatus('Saving online...', 10000);
+
+        if (this.pendingSaveTimeout) {
+            clearTimeout(this.pendingSaveTimeout);
+        }
+
+        this.pendingSaveTimeout = setTimeout(() => {
+            this.flushLibrarySave();
+        }, this.pendingSaveDelay);
+    }
+
+    async flushLibrarySave() {
+        if (!this.authSystem || !this.getCurrentUser() || !this.routineLibrary) {
+            return;
+        }
+
+        const snapshot = JSON.parse(JSON.stringify(this.routineLibrary));
+        try {
+            this.isLibraryLoading = true;
+            const saved = await this.authSystem.saveRoutineLibrary(snapshot);
+            this.routineLibrary = this.normalizeLibrary(saved);
+            this.setRoutineStatus('Saved online.');
+        } catch (error) {
+            console.error('Failed to save routines:', error);
+            this.setRoutineStatus('Online save failed.');
+        } finally {
+            this.isLibraryLoading = false;
+            this.pendingSaveTimeout = null;
+        }
+    }
+
+    getCurrentUser() {
+        return this.authSystem ? this.authSystem.currentUser : null;
+    }
+
+    getDefaultRoutine() {
+        return this.authSystem ? this.authSystem.getDefaultRoutine() : createDefaultRoutine();
+    }
+
+    cloneRoutine(routine) {
+        if (this.authSystem) {
+            return this.authSystem.cloneRoutine(routine);
+        }
+        const source = routine && routine.steps ? routine : this.getDefaultRoutine();
+        return JSON.parse(JSON.stringify(source));
+    }
+
+    createRoutinePack(name, daytimeRoutine, nighttimeRoutine) {
+        if (this.authSystem) {
+            return this.authSystem.createRoutinePack(name, daytimeRoutine, nighttimeRoutine);
+        }
+        const timestamp = Date.now();
+        const id = `routine_${timestamp}_${Math.floor(Math.random() * 100000)}`;
+        return {
+            id,
+            name: (name && name.trim()) || 'My Routine',
+            createdAt: timestamp,
+            updatedAt: timestamp,
+            daytime: this.cloneRoutine(daytimeRoutine),
+            nighttime: this.cloneRoutine(nighttimeRoutine)
+        };
     }
 
     setupAppTabs() {
@@ -332,6 +652,346 @@ class SkincareApp {
             });
         }
     }
+
+    setupRoutineLibrary() {
+        const selector = document.getElementById('routine-selector');
+        const status = document.getElementById('routine-status');
+        const newBtn = document.getElementById('routine-new-btn');
+        const renameBtn = document.getElementById('routine-rename-btn');
+        const deleteBtn = document.getElementById('routine-delete-btn');
+
+        this.libraryElements = {
+            selector,
+            status,
+            newBtn,
+            renameBtn,
+            deleteBtn
+        };
+
+        if (selector) {
+            selector.addEventListener('change', (e) => {
+                const routineId = e.target.value;
+                this.handleRoutineSelection(routineId);
+            });
+        }
+
+        if (newBtn) {
+            newBtn.addEventListener('click', () => this.createNewRoutine());
+        }
+
+        if (renameBtn) {
+            renameBtn.addEventListener('click', () => this.renameRoutine());
+        }
+
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', () => this.deleteRoutine());
+        }
+
+        this.refreshRoutineLibraryUI('Login to manage routines.');
+    }
+
+    handleModeToggle(isDaytimeChecked) {
+        const previousMode = this.isDaytime ? 'daytime' : 'nighttime';
+
+        if (this.getCurrentUser()) {
+            this.autoSave({ modeOverride: previousMode });
+        }
+
+        this.isDaytime = !!isDaytimeChecked;
+        this.updateMode();
+
+        const modeName = this.isDaytime ? 'Daytime' : 'Nighttime';
+        this.loadRoutine({ statusMessage: `${modeName} routine loaded.` });
+    }
+
+    setRoutineControlsDisabled(disabled) {
+        const { selector, newBtn, renameBtn, deleteBtn } = this.libraryElements;
+        const buttons = [newBtn, renameBtn, deleteBtn];
+        if (selector) selector.disabled = disabled;
+        buttons.forEach(btn => {
+            if (btn) {
+                btn.disabled = disabled;
+            }
+        });
+    }
+
+    setRoutineStatus(message, timeout = 2500) {
+        const { status } = this.libraryElements;
+        if (!status) return;
+
+        if (this.statusTimeout) {
+            clearTimeout(this.statusTimeout);
+            this.statusTimeout = null;
+        }
+
+        status.textContent = message || '';
+
+        if (message) {
+            this.statusTimeout = setTimeout(() => {
+                status.textContent = '';
+                this.statusTimeout = null;
+            }, timeout);
+        }
+    }
+
+    refreshRoutineLibraryUI(message) {
+        const { selector, deleteBtn } = this.libraryElements;
+
+        if (!selector) return;
+
+        const currentUser = this.getCurrentUser();
+        if (!currentUser) {
+            selector.innerHTML = '<option value="">Default Routine (not saved)</option>';
+            selector.value = '';
+            this.setRoutineControlsDisabled(true);
+            if (message !== undefined) {
+                this.setRoutineStatus(message);
+            }
+            return;
+        }
+
+        let library = this.ensureRoutineLibrary();
+        let needsSave = false;
+
+        if (!Array.isArray(library.order) || library.order.length === 0) {
+            const pack = this.createRoutinePack('My Routine');
+            library.items[pack.id] = pack;
+            library.order = [pack.id];
+            library.currentId = pack.id;
+            this.currentRoutineId = pack.id;
+            needsSave = true;
+        }
+
+        if (!this.currentRoutineId || !library.items[this.currentRoutineId]) {
+            this.currentRoutineId = library.currentId || library.order[0];
+        }
+
+        library.currentId = this.currentRoutineId;
+        this.routineLibrary = library;
+
+        const options = library.order
+            .filter(id => library.items[id])
+            .map(id => {
+                const pack = library.items[id];
+                const name = (pack && pack.name) ? pack.name : 'Routine';
+                return `<option value="${id}">${name}</option>`;
+            });
+
+        selector.innerHTML = options.join('');
+        if (library.currentId && library.items[library.currentId]) {
+            selector.value = library.currentId;
+        }
+
+        this.setRoutineControlsDisabled(false);
+
+        if (deleteBtn) {
+            const availableCount = library.order.filter(id => library.items[id]).length;
+            deleteBtn.disabled = availableCount <= 1;
+        }
+
+        if (message !== undefined) {
+            this.setRoutineStatus(message);
+        }
+
+        if (needsSave) {
+            this.queueLibrarySave();
+        }
+    }
+
+    getRoutineContext(modeOverride) {
+        if (!this.getCurrentUser()) return null;
+
+        const library = this.ensureRoutineLibrary();
+        if (!library || !library.items) return null;
+
+        const targetMode = (() => {
+            if (modeOverride === 'daytime' || modeOverride === 'nighttime') return modeOverride;
+            if (typeof modeOverride === 'boolean') return modeOverride ? 'daytime' : 'nighttime';
+            if (typeof modeOverride === 'string') {
+                const lowered = modeOverride.toLowerCase();
+                if (lowered === 'daytime' || lowered === 'nighttime') return lowered;
+            }
+            return this.isDaytime ? 'daytime' : 'nighttime';
+        })();
+
+        const currentId = this.currentRoutineId || library.currentId;
+        const pack = currentId ? library.items[currentId] : null;
+        if (!pack) return null;
+
+        let routine = pack && pack[targetMode] ? pack[targetMode] : this.getDefaultRoutine();
+        const migrated = this.migrateRoutine(routine);
+        if (pack) {
+            pack[targetMode] = migrated;
+        }
+
+        const dirty = routine !== migrated;
+        return {
+            library,
+            pack,
+            mode: targetMode,
+            routine: migrated,
+            dirty
+        };
+    }
+
+    commitContext(context, options = {}) {
+        if (!context) return;
+
+        const library = this.ensureRoutineLibrary();
+
+        if (context.library && context.library !== library) {
+            this.routineLibrary = this.normalizeLibrary(context.library);
+        }
+
+        const activeLibrary = this.ensureRoutineLibrary();
+
+        if (context.pack) {
+            activeLibrary.items[context.pack.id] = context.pack;
+        }
+
+        if (context.library && context.library.order) {
+            activeLibrary.order = [...context.library.order];
+        }
+
+        if (options.updateTimestamp && context.pack) {
+            context.pack.updatedAt = Date.now();
+        }
+
+        if (context.library && context.library.currentId) {
+            activeLibrary.currentId = context.library.currentId;
+        }
+
+        if (context.currentId) {
+            activeLibrary.currentId = context.currentId;
+        }
+
+        if (this.currentRoutineId && activeLibrary.items[this.currentRoutineId]) {
+            activeLibrary.currentId = this.currentRoutineId;
+        }
+
+        this.routineLibrary = this.normalizeLibrary(activeLibrary);
+
+        if (this.getCurrentUser()) {
+            this.queueLibrarySave();
+        }
+    }
+
+    handleRoutineSelection(routineId) {
+        if (!this.getCurrentUser()) {
+            this.refreshRoutineLibraryUI('Login to manage routines.');
+            return;
+        }
+
+        this.autoSave();
+
+        const library = this.ensureRoutineLibrary();
+        if (!library.items[routineId]) {
+            this.refreshRoutineLibraryUI();
+            return;
+        }
+
+        this.currentRoutineId = routineId;
+        library.currentId = routineId;
+        this.queueLibrarySave();
+
+        const pack = library.items[routineId];
+        const name = pack && pack.name ? pack.name : 'Routine';
+        this.loadSteps({ statusMessage: `Switched to "${name}".` });
+        this.updateChecklistTitle();
+    }
+
+    createNewRoutine() {
+        if (!this.getCurrentUser()) {
+            this.setRoutineStatus('Login to create routines.');
+            return;
+        }
+
+        this.autoSave();
+
+        const library = this.ensureRoutineLibrary();
+        if (!library) return;
+
+        const defaultName = 'New Routine';
+        const nameInput = prompt('Enter a name for the new routine:', defaultName);
+        if (!nameInput || !nameInput.trim()) {
+            this.setRoutineStatus('Routine creation cancelled.');
+            return;
+        }
+
+        const trimmedName = nameInput.trim();
+        const emptyRoutine = { steps: [], products: {} };
+        const newPack = this.createRoutinePack(trimmedName, emptyRoutine, emptyRoutine);
+
+        library.items[newPack.id] = newPack;
+        library.order.push(newPack.id);
+        library.currentId = newPack.id;
+        this.currentRoutineId = newPack.id;
+
+        this.queueLibrarySave();
+        this.loadSteps({ statusMessage: `Created routine "${trimmedName}". Add steps to begin.` });
+        this.refreshRoutineLibraryUI();
+    }
+
+    renameRoutine() {
+        if (!this.getCurrentUser()) {
+            this.setRoutineStatus('Login to rename routines.');
+            return;
+        }
+
+        this.autoSave();
+
+        const library = this.ensureRoutineLibrary();
+        const pack = library.items[this.currentRoutineId];
+        if (!pack) return;
+
+        const currentName = pack.name || 'My Routine';
+        const nameInput = prompt('Rename routine:', currentName);
+        if (!nameInput || !nameInput.trim() || nameInput.trim() === currentName) {
+            return;
+        }
+
+        pack.name = nameInput.trim();
+        pack.updatedAt = Date.now();
+        library.items[pack.id] = pack;
+        this.queueLibrarySave();
+        this.refreshRoutineLibraryUI(`Renamed routine to "${pack.name}".`);
+        this.updateChecklistTitle();
+    }
+
+    deleteRoutine() {
+        if (!this.getCurrentUser()) {
+            this.setRoutineStatus('Login to delete routines.');
+            return;
+        }
+
+        this.autoSave();
+
+        const library = this.ensureRoutineLibrary();
+        const pack = library.items[this.currentRoutineId];
+        if (!pack) return;
+
+        const availableIds = library.order.filter(id => library.items[id]);
+        if (availableIds.length <= 1) {
+            this.setRoutineStatus('Keep at least one routine.');
+            return;
+        }
+
+        const confirmDelete = confirm(`Delete routine "${pack.name}"? This cannot be undone.`);
+        if (!confirmDelete) return;
+
+        delete library.items[pack.id];
+        library.order = library.order.filter(id => id !== pack.id);
+        const fallbackId = library.order.find(id => library.items[id]);
+        library.currentId = fallbackId || library.order[0] || null;
+        this.currentRoutineId = library.currentId;
+
+        this.queueLibrarySave();
+        this.loadSteps({ statusMessage: 'Routine deleted.' });
+        this.refreshRoutineLibraryUI();
+        this.updateChecklistTitle();
+    }
+
+    // Import/export removed now that Firebase is the source of truth.
 
     setProductsStatus(text) {
         const statusEl = document.getElementById('products-status');
@@ -534,36 +1194,26 @@ class SkincareApp {
         return newRoutine;
     }
 
-    loadSteps() {
-        if (!auth.currentUser) {
-            // Create default steps for new user
-            this.renderSteps(auth.getDefaultRoutine());
+    loadSteps(options = {}) {
+        const { statusMessage } = options;
+
+        if (!this.getCurrentUser()) {
+            this.renderSteps(this.getDefaultRoutine());
+            const message = statusMessage !== undefined ? statusMessage : 'Login to manage routines.';
+            this.refreshRoutineLibraryUI(message);
             return;
         }
 
-        const users = JSON.parse(localStorage.getItem('skincareUsers') || '{}');
-        const user = users[auth.currentUser];
-        if (!user) {
-            this.renderSteps(auth.getDefaultRoutine());
+        const context = this.getRoutineContext();
+        if (!context || !context.routine) {
+            this.renderSteps(this.getDefaultRoutine());
+            const message = statusMessage !== undefined ? statusMessage : 'No routines available.';
+            this.refreshRoutineLibraryUI(message);
             return;
         }
 
-        const mode = this.isDaytime ? 'daytime' : 'nighttime';
-        let routine = user.routines[mode];
-        
-        if (!routine) {
-            routine = auth.getDefaultRoutine();
-        } else {
-            // Migrate old format to new format if needed
-            routine = this.migrateRoutine(routine);
-            
-            // Save migrated routine back
-            user.routines[mode] = routine;
-            users[auth.currentUser] = user;
-            localStorage.setItem('skincareUsers', JSON.stringify(users));
-        }
-        
-        this.renderSteps(routine);
+        this.renderSteps(context.routine);
+        this.refreshRoutineLibraryUI(statusMessage);
     }
 
     renderSteps(routine) {
@@ -742,10 +1392,13 @@ class SkincareApp {
     }
 
     addStepAtPosition(position) {
-        if (!auth.currentUser) {
+        if (!this.getCurrentUser()) {
             alert('Please login to add steps');
             return;
         }
+
+        const context = this.getRoutineContext();
+        if (!context || !context.routine) return;
 
         const stepName = prompt('Enter step name:', 'New Step');
         if (!stepName || !stepName.trim()) return;
@@ -753,27 +1406,14 @@ class SkincareApp {
         this.stepCounter++;
         const stepId = `step_${this.stepCounter}`;
 
-        const users = JSON.parse(localStorage.getItem('skincareUsers') || '{}');
-        const user = users[auth.currentUser];
-        const mode = this.isDaytime ? 'daytime' : 'nighttime';
-        let routine = user.routines[mode];
-        
-        if (!routine) {
-            routine = auth.getDefaultRoutine();
-        } else {
-            // Migrate if needed
-            routine = this.migrateRoutine(routine);
-        }
+        const routine = context.routine;
 
         // Determine new order
         let newOrder;
         if (position === null || position > routine.steps.length) {
-            // Add at the end
             newOrder = routine.steps.length + 1;
         } else {
-            // Insert at specific position
             newOrder = Math.max(1, Math.min(routine.steps.length + 1, position));
-            // Shift all steps at or after this position
             routine.steps.forEach(step => {
                 if (step.order >= newOrder) {
                     step.order++;
@@ -781,7 +1421,6 @@ class SkincareApp {
             });
         }
 
-        // Create new step
         const newStep = {
             id: stepId,
             name: stepName.trim(),
@@ -792,33 +1431,24 @@ class SkincareApp {
         routine.steps.push(newStep);
         routine.products[stepId] = [{ name: 'Product', checked: false, notes: '' }];
 
-        // Reorder all steps to ensure sequential ordering
         routine.steps.sort((a, b) => a.order - b.order);
         routine.steps.forEach((step, index) => {
             step.order = index + 1;
         });
 
-        user.routines[mode] = routine;
-        users[auth.currentUser] = user;
-        localStorage.setItem('skincareUsers', JSON.stringify(users));
+        context.pack[context.mode] = routine;
+        this.commitContext(context, { updateTimestamp: true });
 
         this.renderSteps(routine);
     }
 
     shiftStep(stepId, direction) {
-        if (!auth.currentUser) return;
+        if (!this.getCurrentUser()) return;
 
-        const users = JSON.parse(localStorage.getItem('skincareUsers') || '{}');
-        const user = users[auth.currentUser];
-        const mode = this.isDaytime ? 'daytime' : 'nighttime';
-        let routine = user.routines[mode];
-        
-        if (!routine) {
-            routine = auth.getDefaultRoutine();
-        } else {
-            // Migrate if needed
-            routine = this.migrateRoutine(routine);
-        }
+        const context = this.getRoutineContext();
+        if (!context || !context.routine) return;
+
+        const routine = context.routine;
 
         const step = routine.steps.find(s => s.id === stepId);
         if (!step) return;
@@ -847,31 +1477,23 @@ class SkincareApp {
             s.order = index + 1;
         });
 
-        user.routines[mode] = routine;
-        users[auth.currentUser] = user;
-        localStorage.setItem('skincareUsers', JSON.stringify(users));
+        context.pack[context.mode] = routine;
+        this.commitContext(context, { updateTimestamp: true });
 
         this.renderSteps(routine);
     }
 
     deleteStep(stepId) {
-        if (!auth.currentUser) return;
+        if (!this.getCurrentUser()) return;
 
         if (!confirm('Are you sure you want to delete this step? All products in this step will be removed.')) {
             return;
         }
 
-        const users = JSON.parse(localStorage.getItem('skincareUsers') || '{}');
-        const user = users[auth.currentUser];
-        const mode = this.isDaytime ? 'daytime' : 'nighttime';
-        let routine = user.routines[mode];
-        
-        if (!routine) {
-            routine = auth.getDefaultRoutine();
-        } else {
-            // Migrate if needed
-            routine = this.migrateRoutine(routine);
-        }
+        const context = this.getRoutineContext();
+        if (!context || !context.routine) return;
+
+        const routine = context.routine;
 
         // Remove step
         routine.steps = routine.steps.filter(s => s.id !== stepId);
@@ -882,27 +1504,19 @@ class SkincareApp {
             step.order = index + 1;
         });
 
-        user.routines[mode] = routine;
-        users[auth.currentUser] = user;
-        localStorage.setItem('skincareUsers', JSON.stringify(users));
+        context.pack[context.mode] = routine;
+        this.commitContext(context, { updateTimestamp: true });
 
         this.renderSteps(routine);
     }
 
     updateStepName(stepId, stepName) {
-        if (!auth.currentUser) return;
+        if (!this.getCurrentUser()) return;
 
-        const users = JSON.parse(localStorage.getItem('skincareUsers') || '{}');
-        const user = users[auth.currentUser];
-        const mode = this.isDaytime ? 'daytime' : 'nighttime';
-        let routine = user.routines[mode];
-        
-        if (!routine) {
-            routine = auth.getDefaultRoutine();
-        } else {
-            // Migrate if needed
-            routine = this.migrateRoutine(routine);
-        }
+        const context = this.getRoutineContext();
+        if (!context || !context.routine) return;
+
+        const routine = context.routine;
 
         const step = routine.steps.find(s => s.id === stepId);
         if (step) {
@@ -914,13 +1528,24 @@ class SkincareApp {
             }
         }
 
-        user.routines[mode] = routine;
-        users[auth.currentUser] = user;
-        localStorage.setItem('skincareUsers', JSON.stringify(users));
+        context.pack[context.mode] = routine;
+        this.commitContext(context, { updateTimestamp: true });
     }
 
-    loadRoutine() {
-        this.loadSteps();
+    loadRoutine(options = {}) {
+        this.loadSteps(options);
+    }
+
+    updateChecklistTitle() {
+        const titleEl = document.getElementById('checklist-title');
+        if (!titleEl) return;
+
+        const name = this.getCurrentRoutineName();
+        if (name) {
+            titleEl.textContent = name;
+        } else {
+            titleEl.textContent = 'Routine';
+        }
     }
 
     createProductElement(step, product, index) {
@@ -1071,22 +1696,15 @@ class SkincareApp {
         this.autoSave();
     }
 
-    autoSave() {
-        if (!auth.currentUser) return;
+    autoSave(options = {}) {
+        if (!this.getCurrentUser()) return;
 
-        const users = JSON.parse(localStorage.getItem('skincareUsers') || '{}');
-        const user = users[auth.currentUser];
-        if (!user) return;
+        const context = this.getRoutineContext(options.modeOverride);
+        if (!context || !context.routine) return;
 
-        const mode = this.isDaytime ? 'daytime' : 'nighttime';
-        let routine = user.routines[mode] || auth.getDefaultRoutine();
-
-        // Migrate if needed
-        routine = this.migrateRoutine(routine);
-
-        // Update products for each step
+        const baseRoutine = context.routine;
         const updatedRoutine = {
-            steps: Array.isArray(routine.steps) ? routine.steps : [],
+            steps: Array.isArray(baseRoutine.steps) ? baseRoutine.steps.map(step => ({ ...step })) : [],
             products: {}
         };
 
@@ -1094,7 +1712,7 @@ class SkincareApp {
             const productsList = document.querySelector(`[data-step="${step.id}"]`);
 
             if (!productsList) {
-                updatedRoutine.products[step.id] = (routine.products && routine.products[step.id]) ? routine.products[step.id] : [];
+                updatedRoutine.products[step.id] = (baseRoutine.products && baseRoutine.products[step.id]) ? baseRoutine.products[step.id] : [];
                 return;
             }
 
@@ -1112,9 +1730,9 @@ class SkincareApp {
             });
         });
 
-        user.routines[mode] = updatedRoutine;
-        users[auth.currentUser] = user;
-        localStorage.setItem('skincareUsers', JSON.stringify(users));
+        context.pack[context.mode] = updatedRoutine;
+        context.routine = updatedRoutine;
+        this.commitContext(context, { updateTimestamp: true });
     }
 
     saveRoutine() {
@@ -1135,12 +1753,14 @@ class SkincareApp {
         }, 2000);
 
         // Show checklist summary
-        this.showChecklistSummary(displayRoutine);
+        this.showChecklistSummary(routine);
     }
 
     showChecklistSummary(routine) {
         const checklistSummary = document.getElementById('checklist-summary');
         const checklistContent = document.getElementById('checklist-content');
+
+        this.updateChecklistTitle();
         
         // Sort steps by order
         const sortedSteps = [...routine.steps].sort((a, b) => a.order - b.order);
@@ -1341,14 +1961,14 @@ class SkincareApp {
     }
 
     getCurrentRoutine() {
-        if (!auth.currentUser) return auth.getDefaultRoutine();
+        if (!this.getCurrentUser()) return this.getDefaultRoutine();
 
-        const users = JSON.parse(localStorage.getItem('skincareUsers') || '{}');
-        const user = users[auth.currentUser];
-        if (!user) return auth.getDefaultRoutine();
+        const context = this.getRoutineContext();
+        if (!context || !context.routine) {
+            return this.getDefaultRoutine();
+        }
 
-        const mode = this.isDaytime ? 'daytime' : 'nighttime';
-        return user.routines[mode] || auth.getDefaultRoutine();
+        return context.routine;
     }
 }
 
@@ -1357,8 +1977,8 @@ let auth;
 let app;
 
 document.addEventListener('DOMContentLoaded', () => {
-    auth = new AuthSystem();
     app = new SkincareApp();
+    auth = new AuthSystem(app);
     
     // If user was already logged in, load their routine now
     if (auth.currentUser) {

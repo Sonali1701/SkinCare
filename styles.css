@@ -158,6 +158,72 @@ body::before {
      background: rgba(255, 20, 147, 0.05);
  }
 
+.routine-library {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 16px;
+    align-items: center;
+    margin-bottom: 24px;
+    padding: 16px 20px;
+    background: rgba(255, 255, 255, 0.65);
+    border: 2px solid var(--border-color);
+    border-radius: 18px;
+    box-shadow: var(--shadow);
+}
+
+.routine-library-main {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.routine-label {
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+
+.routine-select {
+    padding: 10px 12px;
+    border: 2px solid var(--border-color);
+    border-radius: 12px;
+    background: white;
+    min-width: 220px;
+    font-size: 0.95rem;
+    color: var(--text-color);
+}
+
+.routine-library-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+.routine-import-label {
+    cursor: pointer;
+}
+
+.routine-status {
+    grid-column: 1 / -1;
+    font-size: 0.9rem;
+    color: var(--hot-pink);
+    min-height: 1.2em;
+}
+
+@media (max-width: 768px) {
+    .routine-library {
+        grid-template-columns: 1fr;
+    }
+
+    .routine-library-actions {
+        justify-content: flex-start;
+    }
+
+    .routine-select {
+        width: 100%;
+    }
+}
+
 /* Authentication Styles */
 .auth-container {
     display: flex;
