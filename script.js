@@ -1802,18 +1802,90 @@ class SkincareApp {
     }
 
     printRoutine() {
-        // Create print-friendly version
-        const printWindow = window.open('', '_blank');
-        let routine = this.getCurrentRoutine();
-        
-        // Migrate if needed
-        if (!routine.steps || !Array.isArray(routine.steps)) {
-            routine = this.migrateRoutine(routine);
-        }
-        
-        // Sort steps by order
-        const sortedSteps = [...routine.steps].sort((a, b) => a.order - b.order);
+        const targetMode = this.isDaytime ? 'daytime' : 'nighttime';
+        const modeLabel = this.isDaytime ? 'Daytime' : 'Nighttime';
 
+        const buildRoutineSection = (title, routine) => {
+            const migrated = this.migrateRoutine(routine);
+            const sortedSteps = [...(migrated.steps || [])].sort((a, b) => a.order - b.order);
+            let section = `<div class="print-routine">`;
+            section += `<h2 class="print-routine-title">${title}</h2>`;
+            section += `<div class="print-grid">`;
+
+            sortedSteps.forEach(step => {
+                if (step.isSPF && !this.isDaytime) return;
+                const products = (migrated.products && migrated.products[step.id]) ? migrated.products[step.id] : [];
+                if (!products || products.length === 0) return;
+
+                section += `<div class="print-step">`;
+                section += `<h3>${step.order}. ${step.name}</h3>`;
+                section += '<ul class="print-items">';
+
+                products.forEach(product => {
+                    const checked = product.checked ? 'checked' : '';
+                    const name = product.name || 'Product';
+                    const notes = (product.notes || '').trim();
+                    section += `<li class="print-item ${checked}">`;
+                    section += `<span class="print-checkbox"></span>`;
+                    section += `<span class="print-name">${name}${notes ? `<span class=\"print-notes\">Notes: ${notes}</span>` : ''}</span>`;
+                    section += `</li>`;
+                });
+
+                section += '</ul></div>';
+            });
+
+            section += `</div></div>`;
+            return section;
+        };
+
+        const sections = [];
+
+        if (this.getCurrentUser() && this.routineLibrary && this.routineLibrary.items) {
+            const library = this.routineLibrary;
+            const orderedIds = (library.order || []).filter(id => library.items[id]);
+            const packs = orderedIds.map(id => library.items[id]);
+
+            if (packs.length > 1) {
+                const listText = packs.map((p, idx) => `${idx + 1}. ${p && p.name ? p.name : 'Routine'}`).join('\n');
+                const selection = prompt(
+                    `Select routines to print (${modeLabel}):\n\n${listText}\n\nEnter numbers separated by commas (example: 1,2) or type "all":`,
+                    'all'
+                );
+
+                if (selection == null) {
+                    return;
+                }
+
+                const raw = selection.trim().toLowerCase();
+                let selectedIndexes = [];
+
+                if (raw === 'all') {
+                    selectedIndexes = packs.map((_, idx) => idx);
+                } else {
+                    selectedIndexes = raw
+                        .split(',')
+                        .map(s => parseInt(s.trim(), 10) - 1)
+                        .filter(n => Number.isFinite(n) && n >= 0 && n < packs.length);
+                }
+
+                const uniqueIndexes = Array.from(new Set(selectedIndexes));
+                uniqueIndexes.forEach(idx => {
+                    const pack = packs[idx];
+                    if (!pack) return;
+                    const routine = (pack && pack[targetMode]) ? pack[targetMode] : this.getDefaultRoutine();
+                    const title = (pack && pack.name) ? pack.name : `Routine ${idx + 1}`;
+                    sections.push(buildRoutineSection(title, routine));
+                });
+            }
+        }
+
+        if (sections.length === 0) {
+            // Fallback: print the currently selected routine only.
+            const title = this.getCurrentRoutineName() || 'Routine';
+            sections.push(buildRoutineSection(title, this.getCurrentRoutine()));
+        }
+
+        const printWindow = window.open('', '_blank');
         let html = `
         <!DOCTYPE html>
         <html>
@@ -1841,6 +1913,18 @@ class SkincareApp {
                 .print-mode {
                     font-size: 11px;
                     color: #666;
+                }
+                .print-routine {
+                    margin-top: 14px;
+                    page-break-inside: avoid;
+                }
+                .print-routine-title {
+                    font-size: 14px;
+                    color: #ff1493;
+                    margin: 8px 0;
+                    text-align: left;
+                    border-bottom: 1px solid #ffc0e5;
+                    padding-bottom: 4px;
                 }
                 .print-grid {
                     display: grid;
@@ -1917,44 +2001,16 @@ class SkincareApp {
         <body>
             <div class="print-header">
                 <h1>Skincare Routine Checklist</h1>
-                <div class="print-mode">${this.isDaytime ? 'Daytime' : 'Nighttime'} Routine</div>
+                <div class="print-mode">${modeLabel} Routines</div>
             </div>
-            <div class="print-grid">
-        `;
-
-        sortedSteps.forEach(step => {
-            // Skip SPF in nighttime mode
-            if (step.isSPF && !this.isDaytime) return;
-            
-            const products = routine.products[step.id] || [];
-            if (products.length === 0) return;
-
-            html += `<div class="print-step">`;
-            html += `<h3>${step.order}. ${step.name}</h3>`;
-            html += '<ul class="print-items">';
-            
-            products.forEach(product => {
-                const checked = product.checked ? 'checked' : '';
-                const name = product.name || 'Product';
-                const notes = (product.notes || '').trim();
-                html += `<li class="print-item ${checked}">`;
-                html += `<span class="print-checkbox"></span>`;
-                html += `<span class="print-name">${name}${notes ? `<span class=\"print-notes\">Notes: ${notes}</span>` : ''}</span>`;
-                html += `</li>`;
-            });
-            
-            html += '</ul></div>';
-        });
-
-        html += `
-            </div>
+            ${sections.join('')}
         </body>
         </html>
         `;
 
         printWindow.document.write(html);
         printWindow.document.close();
-        
+
         setTimeout(() => {
             printWindow.print();
         }, 250);
