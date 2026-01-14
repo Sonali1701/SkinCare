@@ -415,6 +415,8 @@ class SkincareApp {
         this.activeAppTab = 'routine';
         this.allProducts = [];
         this.filteredProducts = [];
+        this.productCatalog = [];
+        this.filteredCatalog = [];
         this.currentRoutineId = null;
         this.libraryElements = {};
         this.statusTimeout = null;
@@ -999,33 +1001,40 @@ class SkincareApp {
     }
 
     ensureProductsLoaded() {
-        if (this.allProducts && this.allProducts.length > 0) {
+        if ((this.productCatalog && this.productCatalog.length > 0) || (this.allProducts && this.allProducts.length > 0)) {
             this.applyProductsFilter();
             return;
         }
 
-        this.setProductsStatus('Loading products from Excel...');
-        this.loadProductsFromWorkbookPath('Skincare Routine.xlsx')
-            .then(products => {
-                if (products && products.length > 0) {
-                    this.allProducts = products;
-                    this.setProductsStatus(`Loaded ${products.length} products from Excel.`);
-                } else {
-                    this.allProducts = [...PRODUCT_DATABASE];
-                    this.setProductsStatus(`Could not read Excel automatically. Showing ${this.allProducts.length} products from built-in list. You can use "Upload Excel".`);
-                }
-                this.applyProductsFilter();
-            })
-            .catch(() => {
-                this.allProducts = [...PRODUCT_DATABASE];
-                this.setProductsStatus(`Could not read Excel automatically. Showing ${this.allProducts.length} products from built-in list. You can use "Upload Excel".`);
-                this.applyProductsFilter();
-            });
+        this.productCatalog = this.getBuiltInProductCatalog();
+        const count = this.productCatalog.reduce((acc, c) => acc + ((c.items || []).length), 0);
+        this.setProductsStatus(`Loaded ${count} products across ${this.productCatalog.length} categories.`);
+        this.applyProductsFilter();
     }
 
     applyProductsFilter() {
         const searchInput = document.getElementById('products-search');
         const q = (searchInput ? searchInput.value : '').trim().toLowerCase();
+
+        if (this.productCatalog && this.productCatalog.length > 0) {
+            const filteredCatalog = (this.productCatalog || []).map(category => {
+                const name = category && category.name ? String(category.name) : '';
+                const items = Array.isArray(category.items) ? category.items : [];
+                const filteredItems = q
+                    ? items.filter(item => {
+                        const n = (item && item.name) ? String(item.name).toLowerCase() : '';
+                        const concern = (item && item.concern) ? String(item.concern).toLowerCase() : '';
+                        const cat = name.toLowerCase();
+                        return n.includes(q) || concern.includes(q) || cat.includes(q);
+                    })
+                    : items;
+                return { ...category, items: filteredItems };
+            }).filter(category => (category.items || []).length > 0);
+
+            this.filteredCatalog = filteredCatalog;
+            this.renderProducts();
+            return;
+        }
 
         const unique = Array.from(new Set((this.allProducts || []).map(p => (p || '').trim()).filter(Boolean)));
         const filtered = q
@@ -1039,6 +1048,45 @@ class SkincareApp {
     renderProducts() {
         const listEl = document.getElementById('products-list');
         if (!listEl) return;
+
+        if (this.filteredCatalog && this.filteredCatalog.length > 0) {
+            const html = this.filteredCatalog.map(category => {
+                const title = category && category.name ? String(category.name) : 'Category';
+                const cards = (category.items || []).map(item => {
+                    const name = item && item.name ? String(item.name) : 'Product';
+                    const link = item && item.link ? String(item.link) : '';
+                    const img = item && item.image ? String(item.image) : '';
+
+                    const linkHtml = link
+                        ? `<a class="product-card-link" href="${link}" target="_blank" rel="noopener noreferrer">Buy</a>`
+                        : '';
+
+                    const imgHtml = img
+                        ? `<img class="product-card-img" src="${img}" alt="${name}" onerror="this.style.display='none'" />`
+                        : '';
+
+                    return `
+                        <div class="product-card">
+                            <div class="product-card-media">${imgHtml}</div>
+                            <div class="product-card-body">
+                                <div class="product-card-title">${name}</div>
+                                ${linkHtml}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                return `
+                    <section class="product-category">
+                        <h3 class="product-category-title">${title}</h3>
+                        <div class="product-cards">${cards || ''}</div>
+                    </section>
+                `;
+            }).join('');
+
+            listEl.innerHTML = `<div class="product-categories">${html}</div>`;
+            return;
+        }
 
         const rows = (this.filteredProducts || []).map((p, idx) => {
             const safe = String(p);
@@ -1070,31 +1118,197 @@ class SkincareApp {
 
         const arrayBuffer = await file.arrayBuffer();
         const workbook = window.XLSX.read(arrayBuffer, { type: 'array' });
-        const products = this.extractProductsFromWorkbook(workbook);
+        const result = this.extractCatalogFromWorkbook(workbook);
+        const catalog = result && result.catalog ? result.catalog : [];
+        const products = result && Array.isArray(result.products) ? result.products : [];
 
-        if (products.length === 0) {
+        if (catalog.length === 0 && products.length === 0) {
             this.setProductsStatus('No products found in uploaded Excel.');
             return;
         }
 
-        this.allProducts = products;
-        this.setProductsStatus(`Loaded ${products.length} products from uploaded Excel.`);
+        if (catalog.length > 0) {
+            this.productCatalog = catalog;
+            const count = catalog.reduce((acc, c) => acc + ((c.items || []).length), 0);
+            this.setProductsStatus(`Loaded ${count} products across ${catalog.length} categories from uploaded Excel.`);
+        } else {
+            this.allProducts = products;
+            this.setProductsStatus(`Loaded ${products.length} products from uploaded Excel.`);
+        }
         this.applyProductsFilter();
+    }
+
+    buildProductLink(productName) {
+        return 'https://example.com/buy?ref=YOURCODE';
+    }
+
+    getBuiltInProductCatalog() {
+        const addCategory = (name, folderName, products) => {
+            const items = (products || []).map(p => {
+                const productName = String(p || '').trim();
+                // Keep original name for image path to match your file naming
+                const imageName = productName.replace(/[^\w\s.-]/g, '').trim();
+                const folder = this.normalizeCategoryFolderName(folderName || name);
+                // Encode the path components to handle spaces and special characters
+                const encodedFolder = encodeURIComponent(folder);
+                const encodedImageName = encodeURIComponent(imageName + '.png');
+                const imagePath = `Images/${encodedFolder}/${encodedImageName}`;
+                
+                return {
+                    name: productName,
+                    concern: '',
+                    link: this.buildProductLink(productName),
+                    image: imagePath
+                };
+            }).filter(i => i.name);
+            return { name, items };
+        };
+
+        return [
+            addCategory('Acne', 'Acne', [
+                'Medicube 10 Azelaic Acid Niacinamide Foam Cleanser',
+                'Medicube Zero Pore Blackhead Mud Facial Mask',
+                'Medicube Zero Pore Pad 2.0',
+                'Medicube Exosome Cica Calming Pad',
+                'Cica Daily Soothing Beauty Mask',
+                'Tretinoin'
+            ]),
+            addCategory('Wrinkles', 'Wrinkles', [
+                'Tretinoin',
+                'Celimax The Vita A Retinal Shot Tightening Booster',
+                'Medicube PDRN Overnight Wrapping Mask',
+                'ZIIP Golden Gel'
+            ]),
+            addCategory('Fine Lines', 'Fine Lines', [
+                'The Ordinary Volufiline 92% + Pal-Isoleucine',
+                'Celimax The Vita A Retinal Shot Tightening Booster'
+            ]),
+            addCategory('Cleansers', 'Cleansers', [
+                'Medicube PDRN Jelly to Foam Cleanser',
+                'Snow Aqua 0 Ginseng Deep Cleansing Oil',
+                'Thayers Hydrating Milky Cleanser'
+            ]),
+            addCategory('Masks', 'Masks', [
+                'Medicube PDRN Overnight Wrapping Mask',
+                'Embryolisse 3-in-1 Secret Paste',
+                'Medicube Zero Pore Blackhead Mud Mask'
+            ]),
+            addCategory('General', 'General  Supportive Skincare', [
+                'Embryolisse 3-in-1 Secret Paste',
+                'Estradiol Vaginal Cream USP 0.01%'
+            ])
+        ].filter(c => (c.items || []).length > 0);
     }
 
     async loadProductsFromWorkbookPath(path) {
         if (!window.XLSX) {
-            return [];
+            return { catalog: [], products: [] };
         }
 
         const resp = await fetch(path);
         if (!resp.ok) {
-            return [];
+            return { catalog: [], products: [] };
         }
 
         const arrayBuffer = await resp.arrayBuffer();
         const workbook = window.XLSX.read(arrayBuffer, { type: 'array' });
-        return this.extractProductsFromWorkbook(workbook);
+        return this.extractCatalogFromWorkbook(workbook);
+    }
+
+    slugifyProductName(name) {
+        return String(name || '')
+            .toLowerCase()
+            .replace(/&/g, ' and ')
+            .replace(/[^a-z0-9]+/g, '_')
+            .replace(/^_+|_+$/g, '')
+            .slice(0, 120);
+    }
+
+    normalizeCategoryFolderName(name) {
+        return String(name || '').trim();
+    }
+
+    extractCatalogFromWorkbook(workbook) {
+        const fallback = () => {
+            const products = this.extractProductsFromWorkbook(workbook);
+            return { catalog: [], products };
+        };
+
+        try {
+            const sheet = workbook.Sheets && (workbook.Sheets['Sheet3'] || workbook.Sheets['sheet3']);
+            if (!sheet) return fallback();
+
+            const rows = window.XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false });
+            if (!rows || rows.length === 0) return fallback();
+
+            const catalog = [];
+            let currentCategory = null;
+
+            const isBlank = (v) => v == null || String(v).trim() === '';
+            const isCategoryRow = (row) => {
+                const a = row && row[0] != null ? String(row[0]).trim() : '';
+                if (!a) return false;
+                const b = row && row[1] != null ? String(row[1]).trim() : '';
+                const c = row && row[2] != null ? String(row[2]).trim() : '';
+                return !!a && isBlank(b) && isBlank(c) && a.toLowerCase() !== 'product';
+            };
+            const isHeaderRow = (row) => {
+                const a = row && row[0] != null ? String(row[0]).trim().toLowerCase() : '';
+                const b = row && row[1] != null ? String(row[1]).trim().toLowerCase() : '';
+                const c = row && row[2] != null ? String(row[2]).trim().toLowerCase() : '';
+                return a === 'product' && (b.includes('primary') || b.includes('concern')) && c.includes('link');
+            };
+
+            rows.forEach(row => {
+                if (!row || row.length === 0) return;
+
+                if (isCategoryRow(row)) {
+                    const name = String(row[0]).trim();
+                    currentCategory = { name, items: [] };
+                    catalog.push(currentCategory);
+                    return;
+                }
+
+                if (isHeaderRow(row)) {
+                    return;
+                }
+
+                const productName = row[0] != null ? String(row[0]).trim() : '';
+                const concern = row[1] != null ? String(row[1]).trim() : '';
+                const link = row[2] != null ? String(row[2]).trim() : '';
+
+                if (!productName) return;
+
+                if (!currentCategory) {
+                    currentCategory = { name: 'Products', items: [] };
+                    catalog.push(currentCategory);
+                }
+
+                const categoryFolder = this.normalizeCategoryFolderName(currentCategory.name);
+                const slug = this.slugifyProductName(productName);
+                const image = slug ? `Images/${categoryFolder}/${slug}.png` : '';
+
+                currentCategory.items.push({
+                    name: productName,
+                    concern,
+                    link,
+                    image
+                });
+            });
+
+            const normalizedCatalog = catalog
+                .map(c => ({ name: c.name, items: (c.items || []).filter(i => i && i.name) }))
+                .filter(c => (c.items || []).length > 0);
+
+            if (normalizedCatalog.length === 0) {
+                return fallback();
+            }
+
+            const flat = normalizedCatalog.flatMap(c => (c.items || []).map(i => i.name));
+            return { catalog: normalizedCatalog, products: flat };
+        } catch {
+            return fallback();
+        }
     }
 
     extractProductsFromWorkbook(workbook) {
