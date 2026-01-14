@@ -1056,13 +1056,14 @@ class SkincareApp {
                     const name = item && item.name ? String(item.name) : 'Product';
                     const link = item && item.link ? String(item.link) : '';
                     const img = item && item.image ? String(item.image) : '';
+                    const imgFallback = item && item.imageFallback ? String(item.imageFallback) : '';
 
                     const linkHtml = link
                         ? `<a class="product-card-link" href="${link}" target="_blank" rel="noopener noreferrer">Buy</a>`
                         : '';
 
                     const imgHtml = img
-                        ? `<img class="product-card-img" src="${img}" alt="${name}" onerror="this.style.display='none'" />`
+                        ? `<img class="product-card-img" src="${img}" data-fallback="${imgFallback}" alt="${name}" onerror="if(this.dataset.fallback && this.src!==this.dataset.fallback){this.src=this.dataset.fallback;return;}this.style.display='none'" />`
                         : '';
 
                     return `
@@ -1146,19 +1147,18 @@ class SkincareApp {
         const addCategory = (name, folderName, products) => {
             const items = (products || []).map(p => {
                 const productName = String(p || '').trim();
-                // Keep original name for image path to match your file naming
-                const imageName = productName.replace(/[^\w\s.-]/g, '').trim();
-                const folder = this.normalizeCategoryFolderName(folderName || name);
-                // Encode the path components to handle spaces and special characters
-                const encodedFolder = encodeURIComponent(folder);
-                const encodedImageName = encodeURIComponent(imageName + '.png');
-                const imagePath = `Images/${encodedFolder}/${encodedImageName}`;
+                const cleanImageName = productName.replace(/[^\w\s.-]/g, ' ').replace(/\s+/g, ' ').trim();
+                const primaryImagePath = encodeURI(`Images/${cleanImageName}.png`);
+
+                const slug = this.slugifyProductName(productName);
+                const fallbackImagePath = slug ? encodeURI(`Images/${slug}.png`) : '';
                 
                 return {
                     name: productName,
                     concern: '',
                     link: this.buildProductLink(productName),
-                    image: imagePath
+                    image: primaryImagePath,
+                    imageFallback: fallbackImagePath
                 };
             }).filter(i => i.name);
             return { name, items };
