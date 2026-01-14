@@ -1056,14 +1056,16 @@ class SkincareApp {
                     const name = item && item.name ? String(item.name) : 'Product';
                     const link = item && item.link ? String(item.link) : '';
                     const img = item && item.image ? String(item.image) : '';
-                    const imgFallback = item && item.imageFallback ? String(item.imageFallback) : '';
+                    const imgFallbacks = item && item.imageFallbacks
+                        ? String(item.imageFallbacks)
+                        : (item && item.imageFallback ? String(item.imageFallback) : '');
 
                     const linkHtml = link
                         ? `<a class="product-card-link" href="${link}" target="_blank" rel="noopener noreferrer">Buy</a>`
                         : '';
 
                     const imgHtml = img
-                        ? `<img class="product-card-img" src="${img}" data-fallback="${imgFallback}" alt="${name}" onerror="if(this.dataset.fallback && this.src!==this.dataset.fallback){this.src=this.dataset.fallback;return;}this.style.display='none'" />`
+                        ? `<img class="product-card-img" src="${img}" data-fallbacks="${imgFallbacks}" data-fallback-index="0" alt="${name}" onerror="var fs=(this.dataset.fallbacks||'').split('|').filter(Boolean);var i=parseInt(this.dataset.fallbackIndex||'0',10);if(i<fs.length){this.dataset.fallbackIndex=String(i+1);if(this.src!==fs[i]){this.src=fs[i];return;}}this.style.display='none'" />`
                         : '';
 
                     return `
@@ -1148,17 +1150,22 @@ class SkincareApp {
             const items = (products || []).map(p => {
                 const productName = String(p || '').trim();
                 const cleanImageName = productName.replace(/[^\w\s.-]/g, ' ').replace(/\s+/g, ' ').trim();
-                const primaryImagePath = encodeURI(`Images/${cleanImageName}.png`);
+                const primaryImagePath = encodeURI(`${cleanImageName}.png`);
 
                 const slug = this.slugifyProductName(productName);
-                const fallbackImagePath = slug ? encodeURI(`Images/${slug}.png`) : '';
+                const fallbackCandidates = [
+                    encodeURI(`Images/${cleanImageName}.png`),
+                    slug ? encodeURI(`${slug}.png`) : '',
+                    slug ? encodeURI(`Images/${slug}.png`) : ''
+                ].filter(Boolean);
+                const fallbackList = fallbackCandidates.join('|');
                 
                 return {
                     name: productName,
                     concern: '',
                     link: this.buildProductLink(productName),
                     image: primaryImagePath,
-                    imageFallback: fallbackImagePath
+                    imageFallbacks: fallbackList
                 };
             }).filter(i => i.name);
             return { name, items };
